@@ -32,7 +32,7 @@ export class Post {
   @Column('text')
   content: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   imageUrl: string | null;
 
   @CreateDateColumn()
