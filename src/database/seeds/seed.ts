@@ -15,93 +15,118 @@ async function seed(): Promise<void> {
   const likeRepo = AppDataSource.getRepository(Like);
 
   // Clear existing seed data in FK-safe order
-  await likeRepo.delete({});
-  await commentRepo.delete({});
-  await postRepo.delete({});
-  await userRepo.delete({});
+  // TypeORM 1.x disallows empty-criteria delete; use queryBuilder instead
+  await likeRepo.createQueryBuilder().delete().execute();
+  await commentRepo.createQueryBuilder().delete().execute();
+  await postRepo.createQueryBuilder().delete().execute();
+  await userRepo.createQueryBuilder().delete().execute();
 
-  // Create 3 users
+  // Create 30 users with hashed passwords
   const passwordHash = await bcrypt.hash('password123', 10);
 
-  const alice = userRepo.create({
-    displayName: 'Alice',
-    email: 'alice@example.com',
-    passwordHash,
-    photoUrl: null,
-  });
-  const bob = userRepo.create({
-    displayName: 'Bob',
-    email: 'bob@example.com',
-    passwordHash,
-    photoUrl: null,
-  });
-  const carol = userRepo.create({
-    displayName: 'Carol',
-    email: 'carol@example.com',
-    passwordHash,
-    photoUrl: null,
-  });
-
-  await userRepo.save([alice, bob, carol]);
-
-  // Create 25 posts (more than one page of 20) spread across the three users
-  const postData = Array.from({ length: 25 }, (_, i) => {
-    const authors = [alice, bob, carol];
-    const author = authors[i % 3];
-    return postRepo.create({
-      authorId: author.id,
-      title: `Post ${i + 1}: A sample title`,
-      content: `This is the content of post number ${i + 1}. It contains enough text to be interesting.`,
-      imageUrl: null,
-    });
-  });
-
-  const posts = await postRepo.save(postData);
-
-  // Create 10 comments spread across posts
-  const commentData = [
-    { post: posts[0], author: bob, content: 'Great post, Alice!' },
-    { post: posts[0], author: carol, content: 'I agree, very interesting.' },
-    { post: posts[1], author: alice, content: 'Nice work Bob.' },
-    { post: posts[2], author: bob, content: 'Thanks for sharing, Carol.' },
-    { post: posts[3], author: carol, content: 'Fascinating perspective.' },
-    { post: posts[4], author: alice, content: 'Well written!' },
-    { post: posts[5], author: bob, content: 'Looking forward to more.' },
-    { post: posts[6], author: carol, content: 'Loved reading this.' },
-    { post: posts[7], author: alice, content: 'Very insightful.' },
-    { post: posts[8], author: bob, content: 'Keep it up!' },
+  const firstNames = [
+    'Alice', 'Bob', 'Carol', 'Dave', 'Eve',
+    'Frank', 'Grace', 'Hank', 'Iris', 'Jack',
+    'Karen', 'Leo', 'Maya', 'Noah', 'Olivia',
+    'Paul', 'Quinn', 'Rose', 'Sam', 'Tara',
+    'Uma', 'Victor', 'Wendy', 'Xander', 'Yara',
+    'Zach', 'Amber', 'Blake', 'Chloe', 'Derek',
   ];
 
-  const comments = commentData.map(({ post, author, content }) =>
-    commentRepo.create({
-      postId: post.id,
-      authorId: author.id,
-      content,
-    }),
-  );
+  const users: User[] = [];
+  for (let i = 0; i < 30; i++) {
+    const name = firstNames[i];
+    users.push(
+      userRepo.create({
+        displayName: name,
+        email: `${name.toLowerCase()}@example.com`,
+        passwordHash,
+        photoUrl: null,
+      }),
+    );
+  }
+  await userRepo.save(users);
+  console.log(`Created ${users.length} users`);
 
+  // Create 30 posts spread across first 5 users
+  const posts: Post[] = [];
+  for (let i = 0; i < 30; i++) {
+    const author = users[i % 5];
+    posts.push(
+      postRepo.create({
+        authorId: author.id,
+        title: `Post ${i + 1}: ${getPostTitle(i)}`,
+        content: `This is post number ${i + 1}. ${getPostContent(i)}`,
+        imageUrl: null,
+      }),
+    );
+  }
+  await postRepo.save(posts);
+  console.log(`Created ${posts.length} posts`);
+
+  // Create 30 comments spread across different posts and authors
+  const comments: Comment[] = [];
+  for (let i = 0; i < 30; i++) {
+    const post = posts[i % 20]; // spread across first 20 posts
+    const author = users[(i + 3) % 30]; // different author than post owner
+    comments.push(
+      commentRepo.create({
+        postId: post.id,
+        authorId: author.id,
+        content: `Comment ${i + 1}: ${getCommentContent(i)}`,
+      }),
+    );
+  }
   await commentRepo.save(comments);
+  console.log(`Created ${comments.length} comments`);
 
-  // Create some likes across posts
-  const likeData = [
-    { postId: posts[0].id, userId: bob.id },
-    { postId: posts[0].id, userId: carol.id },
-    { postId: posts[1].id, userId: alice.id },
-    { postId: posts[1].id, userId: carol.id },
-    { postId: posts[2].id, userId: alice.id },
-    { postId: posts[3].id, userId: bob.id },
-    { postId: posts[4].id, userId: carol.id },
-    { postId: posts[5].id, userId: alice.id },
-  ];
-
-  const likes = likeData.map(({ postId, userId }) =>
-    likeRepo.create({ postId, userId }),
-  );
-
+  // Create 30 likes with unique (postId, userId) combinations
+  const likeSet = new Set<string>();
+  const likes: Like[] = [];
+  let attempts = 0;
+  while (likes.length < 30 && attempts < 1000) {
+    attempts++;
+    const postIndex = attempts % 25; // across first 25 posts
+    const userIndex = (attempts * 7) % 30; // spread across all users
+    const post = posts[postIndex];
+    const user = users[userIndex];
+    const key = `${post.id}:${user.id}`;
+    if (!likeSet.has(key)) {
+      likeSet.add(key);
+      likes.push(likeRepo.create({ postId: post.id, userId: user.id }));
+    }
+  }
   await likeRepo.save(likes);
+  console.log(`Created ${likes.length} likes`);
 
-  console.log('Seed completed: 3 users, 25 posts, 10 comments, 8 likes');
+  console.log('Seed completed successfully.');
   await AppDataSource.destroy();
+}
+
+function getPostTitle(index: number): string {
+  const titles = [
+    'Getting started with NestJS', 'TypeORM tips and tricks', 'Understanding JWT tokens',
+    'Building REST APIs', 'PostgreSQL performance tuning', 'Docker for Node.js developers',
+    'Testing NestJS applications', 'Guards and interceptors explained', 'Cursor pagination deep dive',
+    'Event-driven architecture in NestJS',
+  ];
+  return titles[index % titles.length];
+}
+
+function getPostContent(index: number): string {
+  return `This is an example post demonstrating content for entry number ${index + 1}. ` +
+    `It contains enough text to be representative of real user-generated content ` +
+    `and exercises the pagination and search features of the API.`;
+}
+
+function getCommentContent(index: number): string {
+  const comments = [
+    'Great post!', 'Very informative.', 'Thanks for sharing this.',
+    'I learned something new today.', 'Well explained!', 'Looking forward to more.',
+    'This was exactly what I needed.', 'Excellent write-up.', 'Keep it up!',
+    'Fascinating perspective.',
+  ];
+  return comments[index % comments.length];
 }
 
 seed().catch((err) => {
