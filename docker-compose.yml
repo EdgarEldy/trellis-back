@@ -1,20 +1,6 @@
-services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: trellis_db
-    environment:
-      POSTGRES_USER: trellis
-      POSTGRES_PASSWORD: trellis
-      POSTGRES_DB: trellis_dev
-    ports:
-      - '5432:5432'
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U trellis']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  postgres_data:
+# The PostgreSQL instance runs as a standalone Docker container (managed outside this Compose file).
+# Connect to it via DATABASE_URL=postgresql://postgres:postgres@localhost:5432/trellis_dev
+# (WSL2 exposes container ports on Windows localhost automatically).
+#
+# The app service will be added here in feature/quality-and-release once the
+# production Dockerfile is finalised and the full build has been validated.
