@@ -1,0 +1,6 @@
+# The PostgreSQL instance runs as a standalone Docker container (managed outside this Compose file).
+# Connect to it via DATABASE_URL=postgresql://postgres:postgres@localhost:5432/trellis_dev
+# (WSL2 exposes container ports on Windows localhost automatically).
+#
+# The app service will be added here in feature/quality-and-release once the
+# production Dockerfile is finalised and the full build has been validated.

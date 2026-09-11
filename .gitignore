@@ -2,6 +2,10 @@
 /dist
 /node_modules
 /build
+*.tsbuildinfo
+
+# uploads (local file storage for avatars and post images)
+/uploads
 
 # Logs
 logs
