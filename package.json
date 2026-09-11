@@ -5,6 +5,9 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "build": "nest build",
     "deploy": "nest deploy",
@@ -18,7 +21,13 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:ci": "jest --ci --coverage --forceExit",
+    "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts",
+    "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
+    "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
+    "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts",
+    "db:reset": "npm run migration:revert && npm run migration:run && npm run seed"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
