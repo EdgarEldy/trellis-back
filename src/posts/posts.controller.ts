@@ -7,6 +7,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  OnModuleInit,
   Param,
   ParseIntPipe,
   ParseUUIDPipe,
@@ -30,11 +31,13 @@ import { PostResponseDto } from './dto/post-response.dto';
 const POST_IMAGE_UPLOAD_DIR = join(process.cwd(), 'uploads', 'posts');
 const POST_IMAGE_MAX_SIZE_BYTES = 5 * 1024 * 1024;
 
-mkdirSync(POST_IMAGE_UPLOAD_DIR, { recursive: true });
-
 @Controller('posts')
-export class PostsController {
+export class PostsController implements OnModuleInit {
   constructor(private readonly postsService: PostsService) {}
+
+  onModuleInit(): void {
+    mkdirSync(POST_IMAGE_UPLOAD_DIR, { recursive: true });
+  }
 
   @Get()
   findMany(
