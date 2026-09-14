@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { unlink } from 'fs/promises';
@@ -35,11 +35,18 @@ export class UsersService {
     return UserResponseDto.fromEntity(saved);
   }
 
-  async updateAvatar(userId: string, filename: string): Promise<{ photoUrl: string }> {
+  async updateAvatar(
+    userId: string,
+    file: Express.Multer.File | undefined,
+  ): Promise<{ photoUrl: string }> {
+    if (!file) {
+      throw new BadRequestException('File must be an image');
+    }
+
     const user = await this.getUserOrThrow(userId);
     const previousPhotoUrl = user.photoUrl;
 
-    user.photoUrl = `/uploads/avatars/${filename}`;
+    user.photoUrl = `/uploads/avatars/${file.filename}`;
     await this.usersRepo.save(user);
 
     if (previousPhotoUrl) {
