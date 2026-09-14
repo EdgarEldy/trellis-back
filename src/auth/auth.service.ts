@@ -10,6 +10,7 @@ import { RefreshToken } from './entities/refresh-token.entity';
 import { UserResponseDto } from '../users/dto/user-response.dto';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { GoogleAuthService, VerifiedGoogleUser } from '../integrations/google-auth.service';
 
 const BCRYPT_SALT_ROUNDS = 10;
 const REFRESH_TOKEN_BYTES = 32;
@@ -34,6 +35,7 @@ export class AuthService {
     private readonly refreshTokensRepo: Repository<RefreshToken>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly googleAuthService: GoogleAuthService,
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResult> {
@@ -79,6 +81,14 @@ export class AuthService {
     return this.issueTokens(user);
   }
 
+  async loginWithGoogle(idToken: string): Promise<AuthResult> {
+    const googleUser = await this.googleAuthService.verifyIdToken(idToken);
+    const email = this.normalizeEmail(googleUser.email);
+
+    const user = await this.findOrCreateGoogleUser(email, googleUser);
+    return this.issueTokens(user);
+  }
+
   async refresh(refreshToken: string): Promise<{ accessToken: string }> {
     const tokenHash = this.hashToken(refreshToken);
     const stored = await this.refreshTokensRepo.findOneBy({ tokenHash });
@@ -98,6 +108,30 @@ export class AuthService {
     if (stored && stored.revokedAt === null) {
       stored.revokedAt = new Date();
       await this.refreshTokensRepo.save(stored);
+    }
+  }
+
+  private async findOrCreateGoogleUser(email: string, googleUser: VerifiedGoogleUser): Promise<User> {
+    const existing = await this.usersRepo.findOneBy({ email });
+    if (existing) {
+      return existing;
+    }
+
+    try {
+      return await this.usersRepo.save(
+        this.usersRepo.create({
+          email,
+          displayName: googleUser.displayName,
+          photoUrl: googleUser.photoUrl,
+          passwordHash: null,
+        }),
+      );
+    } catch (error) {
+      if (this.isUniqueViolation(error)) {
+        const raceWinner = await this.usersRepo.findOneBy({ email });
+        if (raceWinner) return raceWinner;
+      }
+      throw error;
     }
   }
 
