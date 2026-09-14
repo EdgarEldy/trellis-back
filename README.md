@@ -560,19 +560,19 @@ Project scaffold, TypeORM entities and first migration, global pipes/filters/gua
 
 ### Tasks
 
-- [ ] Create the project: `nest new trellis-back` (scaffolds NestJS 11), remove the generated sample `AppController`/`AppService` boilerplate
-- [ ] Pin the runtime: add `"engines": { "node": ">=24" }` to `package.json`, and an `.nvmrc` containing `24`, so both a human running `nvm use` and CI agree on the same major version
-- [ ] Configure `@nestjs/config` with `registerAs` namespaces (`app`, `database`, `jwt`): a `.env.example` with `DATABASE_URL`, `JWT_SECRET`, `JWT_ACCESS_TTL`; validate them at startup with a Joi schema (same pattern as the sister project) so a missing variable fails fast, not on the first request that needs it
-- [ ] Create `docker-compose.yml` with a `postgres` service and a data volume, so a local restart does not silently wipe the database; document `docker compose up -d postgres` in this branch's own short setup note
-- [ ] Install TypeORM and dependencies (`@nestjs/typeorm`, `typeorm`, `pg`); create `src/database/data-source.ts` (the TypeORM CLI `DataSource` used by migration commands) and `src/database/database.module.ts` (`TypeOrmModule.forRootAsync` with `synchronize: false`, all entity classes listed explicitly); add migration scripts to `package.json` (`migration:generate`, `migration:run`, `migration:revert`, `db:reset`)
-- [ ] Write all entity classes in full (see [Domain Model](#domain-model)), then run `npm run migration:generate -- -n Init` and `npm run migration:run` to generate and apply the first migration; confirm the tables exist with a `psql` or DB client
-- [ ] Write `src/database/seeds/seed.ts`: a handful of users, posts, comments, and likes, enough to exercise pagination (more than one page's worth of posts) manually once endpoints exist; wire it as a `seed` npm script (`ts-node -r tsconfig-paths/register src/database/seeds/seed.ts`) so `npm run seed` runs it
-- [ ] Create `src/common/filters/http-exception.filter.ts` and wire it as a global filter in `main.ts` (see [Error Handling](#error-handling))
-- [ ] Configure the global `ValidationPipe` with the `exceptionFactory` described in [Error Handling](#error-handling)
-- [ ] Create `src/common/decorators/public.decorator.ts` (`SetMetadata('isPublic', true)`) and `src/common/guards/auth.guard.ts` as an empty guard shell that always allows for now, extended by `feature/auth` once there is a token to actually check
-- [ ] Add a `GET /health` endpoint (public) returning `{ status: 'ok' }`, useful for both local sanity checks and container orchestration health checks later
-- [ ] Set up GitHub Actions `ci.yml`: `actions/setup-node@v4` pinned to Node.js 24 (reading the same `.nvmrc` rather than a hardcoded duplicate version), a `postgres` service container, `npm run lint`, `tsc --noEmit`, `npm run migration:run`, `npm test`
-- [ ] Unit test: the app module bootstraps without throwing when all required env vars are present
+- [x] Create the project: `nest new trellis-back` (scaffolds NestJS 11), remove the generated sample `AppController`/`AppService` boilerplate
+- [x] Pin the runtime: add `"engines": { "node": ">=24" }` to `package.json`, and an `.nvmrc` containing `24`, so both a human running `nvm use` and CI agree on the same major version
+- [x] Configure `@nestjs/config` with `registerAs` namespaces (`app`, `database`, `jwt`): a `.env.example` with `DATABASE_URL`, `JWT_SECRET`, `JWT_ACCESS_TTL`; validate them at startup with a Joi schema (same pattern as the sister project) so a missing variable fails fast, not on the first request that needs it
+- [x] Create `docker-compose.yml` with a `postgres` service and a data volume, so a local restart does not silently wipe the database; document `docker compose up -d postgres` in this branch's own short setup note
+- [x] Install TypeORM and dependencies (`@nestjs/typeorm`, `typeorm`, `pg`); create `src/database/data-source.ts` (the TypeORM CLI `DataSource` used by migration commands) and `src/database/database.module.ts` (`TypeOrmModule.forRootAsync` with `synchronize: false`, all entity classes listed explicitly); add migration scripts to `package.json` (`migration:generate`, `migration:run`, `migration:revert`, `db:reset`)
+- [x] Write all entity classes in full (see [Domain Model](#domain-model)), then run `npm run migration:generate -- -n Init` and `npm run migration:run` to generate and apply the first migration; confirm the tables exist with a `psql` or DB client
+- [x] Write `src/database/seeds/seed.ts`: a handful of users, posts, comments, and likes, enough to exercise pagination (more than one page's worth of posts) manually once endpoints exist; wire it as a `seed` npm script (`ts-node -r tsconfig-paths/register src/database/seeds/seed.ts`) so `npm run seed` runs it
+- [x] Create `src/common/filters/http-exception.filter.ts` and wire it as a global filter in `main.ts` (see [Error Handling](#error-handling))
+- [x] Configure the global `ValidationPipe` with the `exceptionFactory` described in [Error Handling](#error-handling)
+- [x] Create `src/common/decorators/public.decorator.ts` (`SetMetadata('isPublic', true)`) and `src/common/guards/auth.guard.ts` as an empty guard shell that always allows for now, extended by `feature/auth` once there is a token to actually check
+- [x] Add a `GET /health` endpoint (public) returning `{ status: 'ok' }`, useful for both local sanity checks and container orchestration health checks later
+- [x] Set up GitHub Actions `ci.yml`: `actions/setup-node@v4` pinned to Node.js 24 (reading the same `.nvmrc` rather than a hardcoded duplicate version), a `postgres` service container, `npm run lint`, `tsc --noEmit`, `npm run migration:run`, `npm test`
+- [x] Unit test: the app module bootstraps without throwing when all required env vars are present
 
 ---
 
