@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { LikesService } from './likes.service';
 import { Like } from './entities/like.entity';
 import { Post } from '../posts/entities/post.entity';
@@ -75,6 +75,20 @@ describe('LikesService', () => {
 
       await expect(service.toggle('unknown-post', 'user-1')).rejects.toThrow('Post not found');
       expect(likesRepo.findOneBy).not.toHaveBeenCalled();
+    });
+
+    it('does not double-emit like.created when a concurrent insert wins the unique-constraint race', async () => {
+      postsRepo.existsBy.mockResolvedValue(true);
+      likesRepo.findOneBy.mockResolvedValue(null);
+      likesRepo.insert.mockRejectedValue(
+        new QueryFailedError('INSERT ...', undefined, { code: '23505' } as unknown as Error),
+      );
+      likesRepo.count.mockResolvedValue(1);
+
+      const result = await service.toggle('post-1', 'user-1');
+
+      expect(result).toEqual({ liked: true, likesCount: 1 });
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
   });
 });
