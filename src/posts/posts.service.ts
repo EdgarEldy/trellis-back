@@ -1,9 +1,10 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { unlink } from 'fs/promises';
 import { join } from 'path';
 import { Post } from './entities/post.entity';
+import { Comment } from '../comments/entities/comment.entity';
 import { Like } from '../likes/entities/like.entity';
 import { PostResponseDto } from './dto/post-response.dto';
 import { CreatePostDto } from './dto/create-post.dto';
@@ -32,16 +33,14 @@ export class PostsService {
     cursor?: string,
     limit: number = DEFAULT_PAGE_SIZE,
   ): Promise<PagedPosts> {
-    const qb = this.postsRepo
-      .createQueryBuilder('post')
-      .leftJoinAndSelect('post.author', 'author')
-      .loadRelationCountAndMap('post.commentsCount', 'post.comments')
-      .loadRelationCountAndMap('post.likesCount', 'post.likes');
+    const qb = this.withCounts(
+      this.postsRepo.createQueryBuilder('post').leftJoinAndSelect('post.author', 'author'),
+    );
 
     const cursorRef = cursor ? await this.postsRepo.findOneBy({ id: cursor }) : null;
     applyCursorPagination(qb, 'post', cursorRef, limit);
 
-    const posts = await qb.getMany();
+    const posts = await this.getManyWithCounts(qb);
     const likedPostIds = await this.findLikedPostIds(currentUserId, posts);
 
     return {
@@ -51,7 +50,14 @@ export class PostsService {
   }
 
   async findOneById(id: string, currentUserId: string): Promise<PostResponseDto> {
-    const post = await this.getPostWithCounts(id);
+    const qb = this.withCounts(
+      this.postsRepo
+        .createQueryBuilder('post')
+        .leftJoinAndSelect('post.author', 'author')
+        .where('post.id = :id', { id }),
+    );
+
+    const [post] = await this.getManyWithCounts(qb);
     if (!post) {
       throw new NotFoundException('Post not found');
     }
@@ -111,20 +117,38 @@ export class PostsService {
     const postIds = posts.map((post) => post.id);
     const myLikes = await this.likesRepo.find({
       where: { postId: In(postIds), userId: currentUserId },
-      select: ['postId'],
+      select: { postId: true },
     });
 
     return new Set(myLikes.map((like) => like.postId));
   }
 
-  private async getPostWithCounts(id: string): Promise<Post | null> {
-    return this.postsRepo
-      .createQueryBuilder('post')
-      .leftJoinAndSelect('post.author', 'author')
-      .loadRelationCountAndMap('post.commentsCount', 'post.comments')
-      .loadRelationCountAndMap('post.likesCount', 'post.likes')
-      .where('post.id = :id', { id })
-      .getOne();
+  // loadRelationCountAndMap does not exist on this installed TypeORM version; these correlated
+  // subqueries via addSelect are the replacement, still one round trip for the whole page.
+  private withCounts(qb: SelectQueryBuilder<Post>): SelectQueryBuilder<Post> {
+    return qb
+      .addSelect(
+        (subQb) =>
+          subQb
+            .select('COUNT(*)', 'count')
+            .from(Comment, 'comment')
+            .where('comment.postId = post.id'),
+        'post_commentsCount',
+      )
+      .addSelect(
+        (subQb) =>
+          subQb.select('COUNT(*)', 'count').from(Like, 'like').where('like.postId = post.id'),
+        'post_likesCount',
+      );
+  }
+
+  private async getManyWithCounts(qb: SelectQueryBuilder<Post>): Promise<Post[]> {
+    const { entities, raw } = await qb.getRawAndEntities();
+    entities.forEach((post, index) => {
+      post.commentsCount = parseInt(raw[index].post_commentsCount as string, 10);
+      post.likesCount = parseInt(raw[index].post_likesCount as string, 10);
+    });
+    return entities;
   }
 
   private async getPostOrThrow(id: string): Promise<Post> {
