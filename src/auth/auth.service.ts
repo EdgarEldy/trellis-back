@@ -2,7 +2,7 @@ import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/co
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { randomBytes, createHash } from 'crypto';
 import { User } from '../users/entities/user.entity';
@@ -14,6 +14,7 @@ import { LoginDto } from './dto/login.dto';
 const BCRYPT_SALT_ROUNDS = 10;
 const REFRESH_TOKEN_BYTES = 32;
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const POSTGRES_UNIQUE_VIOLATION = '23505';
 
 export interface TokenPair {
   accessToken: string;
@@ -43,13 +44,22 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
-    const user = await this.usersRepo.save(
-      this.usersRepo.create({
-        email,
-        displayName: dto.displayName,
-        passwordHash,
-      }),
-    );
+
+    let user: User;
+    try {
+      user = await this.usersRepo.save(
+        this.usersRepo.create({
+          email,
+          displayName: dto.displayName,
+          passwordHash,
+        }),
+      );
+    } catch (error) {
+      if (this.isUniqueViolation(error)) {
+        throw new ConflictException('Email is already registered');
+      }
+      throw error;
+    }
 
     return this.issueTokens(user);
   }
@@ -134,5 +144,12 @@ export class AuthService {
 
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
+  }
+
+  private isUniqueViolation(error: unknown): boolean {
+    return (
+      error instanceof QueryFailedError &&
+      (error.driverError as { code?: string })?.code === POSTGRES_UNIQUE_VIOLATION
+    );
   }
 }
