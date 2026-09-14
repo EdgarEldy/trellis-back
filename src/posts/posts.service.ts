@@ -60,13 +60,17 @@ export class PostsService {
     return PostResponseDto.fromEntity(post, isLikedByMe);
   }
 
-  async create(authorId: string, dto: CreatePostDto, imageUrl: string | null): Promise<PostResponseDto> {
+  async create(
+    authorId: string,
+    dto: CreatePostDto,
+    imageFilename: string | undefined,
+  ): Promise<PostResponseDto> {
     const post = await this.postsRepo.save(
       this.postsRepo.create({
         authorId,
         title: dto.title,
         content: dto.content,
-        imageUrl,
+        imageUrl: imageFilename ? `/uploads/posts/${imageFilename}` : null,
       }),
     );
 
