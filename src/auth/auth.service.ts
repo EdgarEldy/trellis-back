@@ -36,7 +36,8 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResult> {
-    const existing = await this.usersRepo.findOneBy({ email: dto.email });
+    const email = this.normalizeEmail(dto.email);
+    const existing = await this.usersRepo.findOneBy({ email });
     if (existing) {
       throw new ConflictException('Email is already registered');
     }
@@ -44,7 +45,7 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
     const user = await this.usersRepo.save(
       this.usersRepo.create({
-        email: dto.email,
+        email,
         displayName: dto.displayName,
         passwordHash,
       }),
@@ -54,7 +55,8 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<AuthResult> {
-    const user = await this.usersRepo.findOneBy({ email: dto.email });
+    const email = this.normalizeEmail(dto.email);
+    const user = await this.usersRepo.findOneBy({ email });
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException('Invalid email or password');
     }
@@ -128,5 +130,9 @@ export class AuthService {
 
   private hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
   }
 }
