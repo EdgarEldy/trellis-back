@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { CommentsService } from './comments.service';
@@ -10,6 +11,7 @@ describe('CommentsService', () => {
   let service: CommentsService;
   let commentsRepo: jest.Mocked<Repository<Comment>>;
   let postsRepo: jest.Mocked<Repository<Post>>;
+  let eventEmitter: jest.Mocked<EventEmitter2>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -31,12 +33,19 @@ describe('CommentsService', () => {
             existsBy: jest.fn(),
           },
         },
+        {
+          provide: EventEmitter2,
+          useValue: {
+            emit: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     service = module.get(CommentsService);
     commentsRepo = module.get(getRepositoryToken(Comment));
     postsRepo = module.get(getRepositoryToken(Post));
+    eventEmitter = module.get(EventEmitter2);
   });
 
   describe('create', () => {
@@ -47,6 +56,25 @@ describe('CommentsService', () => {
         service.create('unknown-post', 'author-1', { content: 'Hello' }),
       ).rejects.toThrow(NotFoundException);
       expect(commentsRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('emits comment.created with the postId and authorId after a successful create', async () => {
+      postsRepo.existsBy.mockResolvedValue(true);
+      commentsRepo.findOneOrFail.mockResolvedValue({
+        id: 'comment-1',
+        postId: 'post-1',
+        authorId: 'author-1',
+        content: 'Hello',
+        author: { displayName: 'Author', photoUrl: null },
+        createdAt: new Date(),
+      } as Comment);
+
+      await service.create('post-1', 'author-1', { content: 'Hello' });
+
+      expect(eventEmitter.emit).toHaveBeenCalledWith('comment.created', {
+        postId: 'post-1',
+        authorId: 'author-1',
+      });
     });
   });
 

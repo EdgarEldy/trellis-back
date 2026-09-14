@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { QueryFailedError, Repository } from 'typeorm';
 import { Like } from './entities/like.entity';
 import { Post } from '../posts/entities/post.entity';
@@ -18,6 +19,7 @@ export class LikesService {
     private readonly likesRepo: Repository<Like>,
     @InjectRepository(Post)
     private readonly postsRepo: Repository<Post>,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async toggle(postId: string, userId: string): Promise<ToggleLikeResult> {
@@ -29,7 +31,11 @@ export class LikesService {
       await this.likesRepo.delete({ postId, userId });
       liked = false;
     } else {
-      liked = await this.createLike(postId, userId);
+      const result = await this.createLike(postId, userId);
+      liked = result.liked;
+      if (result.wasInserted) {
+        this.eventEmitter.emit('like.created', { postId, userId });
+      }
     }
 
     const likesCount = await this.likesRepo.count({ where: { postId } });
@@ -42,13 +48,16 @@ export class LikesService {
     return { liked };
   }
 
-  private async createLike(postId: string, userId: string): Promise<boolean> {
+  private async createLike(
+    postId: string,
+    userId: string,
+  ): Promise<{ liked: true; wasInserted: boolean }> {
     try {
       await this.likesRepo.insert({ postId, userId });
-      return true;
+      return { liked: true, wasInserted: true };
     } catch (error) {
       if (this.isUniqueViolation(error)) {
-        return true;
+        return { liked: true, wasInserted: false };
       }
       throw error;
     }
