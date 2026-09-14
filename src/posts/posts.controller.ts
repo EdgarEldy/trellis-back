@@ -18,6 +18,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { mkdirSync } from 'fs';
 import { extname, join } from 'path';
@@ -31,6 +32,8 @@ import { PostResponseDto } from './dto/post-response.dto';
 const POST_IMAGE_UPLOAD_DIR = join(process.cwd(), 'uploads', 'posts');
 const POST_IMAGE_MAX_SIZE_BYTES = 5 * 1024 * 1024;
 
+@ApiTags('posts')
+@ApiBearerAuth()
 @Controller('posts')
 export class PostsController implements OnModuleInit {
   constructor(private readonly postsService: PostsService) {}
@@ -56,6 +59,18 @@ export class PostsController implements OnModuleInit {
     return this.postsService.findOneById(id, userId);
   }
 
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['title', 'content'],
+      properties: {
+        title: { type: 'string' },
+        content: { type: 'string' },
+        image: { type: 'string', format: 'binary' },
+      },
+    },
+  })
   @Post()
   @UseInterceptors(
     FileInterceptor('image', {
