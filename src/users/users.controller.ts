@@ -12,6 +12,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { mkdirSync } from 'fs';
 import { extname, join } from 'path';
@@ -25,6 +26,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 const AVATAR_UPLOAD_DIR = join(process.cwd(), 'uploads', 'avatars');
 const AVATAR_MAX_SIZE_BYTES = 5 * 1024 * 1024;
 
+@ApiTags('users')
 @Controller('users')
 export class UsersController implements OnModuleInit {
   constructor(private readonly usersService: UsersService) {}
@@ -39,6 +41,7 @@ export class UsersController implements OnModuleInit {
     return this.usersService.findById(id);
   }
 
+  @ApiBearerAuth()
   @Patch('me')
   updateProfile(
     @CurrentUser() userId: string,
@@ -47,6 +50,14 @@ export class UsersController implements OnModuleInit {
     return this.usersService.updateProfile(userId, dto);
   }
 
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
   @Post('me/avatar')
   @UseInterceptors(
     FileInterceptor('file', {
