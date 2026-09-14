@@ -1,6 +1,46 @@
-# The PostgreSQL instance runs as a standalone Docker container (managed outside this Compose file).
-# Connect to it via DATABASE_URL=postgresql://postgres:postgres@localhost:5432/trellis_dev
-# (WSL2 exposes container ports on Windows localhost automatically).
+# Self-contained stack: `docker compose up` alone is enough to run this API
+# against its own PostgreSQL instance, no external container required.
 #
-# The app service will be added here in feature/quality-and-release once the
-# production Dockerfile is finalised and the full build has been validated.
+# postgres's port is intentionally NOT published to the host (no `ports:`
+# entry), only `app` reaches it, over the internal `postgres:5432` compose
+# network address. This also means this file never conflicts with a
+# separate, externally-managed PostgreSQL container a developer might
+# already have bound to host port 5432 (as core-architecture's own
+# divergence notes describe for this project's usual WSL2 dev setup);
+# both can run at once without a port clash.
+#
+# Override JWT_SECRET before running in anything beyond a local sandbox:
+#   JWT_SECRET=a-real-secret docker compose up
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: trellis_dev
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/trellis_dev
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_ACCESS_TTL: 900
+    ports:
+      - '3000:3000'
+    command: sh -c "npm run migration:run:prod && node dist/main"
+
+volumes:
+  postgres_data:
