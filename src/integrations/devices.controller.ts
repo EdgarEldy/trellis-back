@@ -18,7 +18,10 @@ export class DevicesController {
 
   @Delete(':pushToken')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('pushToken') pushToken: string): Promise<void> {
-    await this.devicesService.remove(pushToken);
+  async remove(
+    @Param('pushToken') pushToken: string,
+    @CurrentUser() userId: string,
+  ): Promise<void> {
+    await this.devicesService.remove(pushToken, userId);
   }
 }
