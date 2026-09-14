@@ -1,11 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { HttpExceptionFilter } from '../src/common/filters/http-exception.filter';
+import { createValidationPipe } from '../src/common/pipes/create-validation-pipe';
 
 interface AuthedUser {
   token: string;
@@ -43,17 +44,7 @@ describe('Posts (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        exceptionFactory: (errors) => {
-          const message = errors
-            .map((e) => Object.values(e.constraints ?? {}).join(', '))
-            .join('; ');
-          return new BadRequestException(message);
-        },
-      }),
-    );
+    app.useGlobalPipes(createValidationPipe());
     app.useGlobalFilters(new HttpExceptionFilter());
     await app.init();
 
