@@ -9,6 +9,7 @@ import { validationSchema } from './config/validation.schema';
 import { DatabaseModule } from './database/database.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { HealthController } from './health/health.controller';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { HealthController } from './health/health.controller';
     }),
     DatabaseModule,
     EventEmitterModule.forRoot(),
+    AuthModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
