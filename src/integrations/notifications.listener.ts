@@ -51,9 +51,7 @@ export class NotificationsListener {
     }
 
     const devices = await this.devicesRepo.findBy({ userId: post.authorId });
-    for (const device of devices) {
-      await this.sendToDevice(device, notification);
-    }
+    await Promise.all(devices.map((device) => this.sendToDevice(device, notification)));
   }
 
   private async sendToDevice(device: Device, notification: PushNotification): Promise<void> {
