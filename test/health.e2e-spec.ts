@@ -1,10 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, Body, Controller, INestApplication, Post, ValidationPipe } from '@nestjs/common';
+import { Body, Controller, INestApplication, Post } from '@nestjs/common';
 import { IsNotEmpty, IsString } from 'class-validator';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { HealthController } from '../src/health/health.controller';
 import { HttpExceptionFilter } from '../src/common/filters/http-exception.filter';
+import { createValidationPipe } from '../src/common/pipes/create-validation-pipe';
 
 class ProbeDto {
   @IsString()
@@ -29,17 +30,7 @@ describe('Bootstrap (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        exceptionFactory: (errors) => {
-          const message = errors
-            .map((e) => Object.values(e.constraints ?? {}).join(', '))
-            .join('; ');
-          return new BadRequestException(message);
-        },
-      }),
-    );
+    app.useGlobalPipes(createValidationPipe());
     app.useGlobalFilters(new HttpExceptionFilter());
     await app.init();
   });
