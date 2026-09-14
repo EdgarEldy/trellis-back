@@ -692,22 +692,30 @@ Rate limiting, security headers, structured logging, Swagger docs, full test cov
 
 Optional integrations that are not required to complete the app, kept in their own branch so they do not complicate the core path.
 
+> **Implementation notes (divergences from the plan above):**
+>
+> - **No separate `DevicesModule`**: `DevicesController`/`DevicesService` live directly in `IntegrationsModule` alongside `GoogleAuthService`/`FirebaseMessagingService`/`NotificationsListener`, matching the [Project Structure](#project-structure) file tree (which only ever lists one `integrations.module.ts`, never a `devices.module.ts`) rather than this section's own bullet wording. Both bonus features being genuinely optional together is the same reasoning `feature/core-architecture` already used for one scaffold branch instead of five.
+> - **`firebase-admin`'s modular API, not the namespace one**: the installed `firebase-admin@14.4.0` has no `admin.initializeApp`/`admin.credential.cert`/`admin.messaging()` off a default import (`admin.credential` is `undefined`), the same ecosystem-ahead-of-training-data gap already hit with `typeorm` and `@nestjs/*` peer ranges elsewhere in this project. `FirebaseMessagingService` uses `initializeApp`/`cert` from `'firebase-admin/app'` and `getMessaging` from `'firebase-admin/messaging'` instead, verified directly against the installed package before writing any code against it.
+> - **Both integrations degrade gracefully when unconfigured**: `GOOGLE_CLIENT_ID`/`FIREBASE_SERVICE_ACCOUNT_KEY` live in a new `integrations` config namespace, deliberately left out of `validation.schema.ts`'s required fields (confirmed `@nestjs/config` overrides Joi's own defaults to `allowUnknown: true`, so this needed no schema change at all). `POST /auth/google` responds `401` "Google sign-in is not configured" rather than crashing the whole app at startup; `FirebaseMessagingService` logs a warning and every `send()` call silently no-ops. Every existing E2E test, and local dev/CI generally, keeps working with neither credential set, confirmed live.
+> - **`GoogleAuthService` lives in `integrations/` but is consumed by `AuthController`/`AuthService`**, per the exact pattern [Code Conventions](#code-conventions) sanctions for this bonus branch: "cross-module calls go through that module's exported service via Nest's DI, or (for the integrations bonus) through an emitted event". Google sign-in needs a direct answer (verify this token now) so it uses the DI path; push notifications need no answer at all so they use the event path.
+> - **Code review caught five real issues**, all fixed and verified: a Google ID token's `email_verified` claim was never checked (an unverified email could otherwise sign into an existing local-password account sharing that email); `DELETE /devices/:pushToken` had no ownership check (fixed by scoping the delete to `{ pushToken, userId }`, the same silent-no-op-either-way shape `AuthService.logout` already uses for an unmatched refresh token); `DevicesService.register()` had the same check-then-insert race on the unique `pushToken` column that `AuthService.register`/`LikesService.createLike` already guard against, just not yet applied here; a concurrent duplicate `like.created` emission was possible when two toggles raced on the same unique-constraint insert; and `NotificationsListener` sent to a post author's devices sequentially instead of concurrently.
+
 ### Tasks
 
 **Sign in with Google**
-- [ ] Add `google-auth-library`, configure the app's Google OAuth client id
-- [ ] Implement `POST /auth/google`: `OAuth2Client.verifyIdToken()` against the submitted `idToken`, extract the verified email; find the matching `User` by email, or create one (a Google sign-in with no matching account is a new registration, not an error) with no `passwordHash` set (nullable on `User` for this reason, an account created this way never used a password to begin with)
-- [ ] Issue tokens exactly as `/auth/login` does once the user is resolved, so the rest of the app treats the resulting session identically regardless of how it was established
-- [ ] Unit test: a tampered or expired Google ID token is rejected before any database lookup happens
+- [x] Add `google-auth-library`, configure the app's Google OAuth client id
+- [x] Implement `POST /auth/google`: `OAuth2Client.verifyIdToken()` against the submitted `idToken`, extract the verified email; find the matching `User` by email, or create one (a Google sign-in with no matching account is a new registration, not an error) with no `passwordHash` set (nullable on `User` for this reason, an account created this way never used a password to begin with)
+- [x] Issue tokens exactly as `/auth/login` does once the user is resolved, so the rest of the app treats the resulting session identically regardless of how it was established
+- [x] Unit test: a tampered or expired Google ID token is rejected before any database lookup happens
 
 **Push notifications**
-- [ ] Add `firebase-admin`, initialize it with a service account key read from an environment variable, never committed to the repository
-- [ ] Create `DevicesModule`/`DevicesController`/`DevicesService`: `POST /devices` upserts a `Device` row (a token re-registering should update, not duplicate), `DELETE /devices/:pushToken` removes it
-- [ ] Create `NotificationsListener`, subscribed via `@OnEvent('comment.created')`: look up the post's author's devices, send a push to each via `admin.messaging().send()`, skip sending to the comment's own author (no one needs a push about their own comment)
-- [ ] Emit `comment.created` from `CommentsService.create()` (see [Push notifications without coupling every feature to Firebase](#push-notifications-without-coupling-every-feature-to-firebase)) and a symmetric `like.created` from `LikesService` when a like toggles on (not off)
-- [ ] Handle a send failure whose error code indicates the token is no longer registered (`messaging/registration-token-not-registered`): delete that `Device` row so the backend stops retrying a token that will never succeed again
-- [ ] Unit test: `NotificationsListener` does not send a push to the comment's own author
-- [ ] Unit test: a mocked `messaging/registration-token-not-registered` error results in the corresponding `Device` row being deleted
+- [x] Add `firebase-admin`, initialize it with a service account key read from an environment variable, never committed to the repository
+- [x] Create `DevicesModule`/`DevicesController`/`DevicesService`: `POST /devices` upserts a `Device` row (a token re-registering should update, not duplicate), `DELETE /devices/:pushToken` removes it
+- [x] Create `NotificationsListener`, subscribed via `@OnEvent('comment.created')`: look up the post's author's devices, send a push to each via `admin.messaging().send()`, skip sending to the comment's own author (no one needs a push about their own comment)
+- [x] Emit `comment.created` from `CommentsService.create()` (see [Push notifications without coupling every feature to Firebase](#push-notifications-without-coupling-every-feature-to-firebase)) and a symmetric `like.created` from `LikesService` when a like toggles on (not off)
+- [x] Handle a send failure whose error code indicates the token is no longer registered (`messaging/registration-token-not-registered`): delete that `Device` row so the backend stops retrying a token that will never succeed again
+- [x] Unit test: `NotificationsListener` does not send a push to the comment's own author
+- [x] Unit test: a mocked `messaging/registration-token-not-registered` error results in the corresponding `Device` row being deleted
 
 ---
 
