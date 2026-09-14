@@ -622,28 +622,37 @@ Registration, login, refresh, logout, profile retrieval/update, avatar upload: e
 
 The full post interaction surface: posts, comments, and likes together, since a comment or a like has no meaning without a post already existing.
 
+> **Implementation notes (divergences from the plan above):**
+>
+> - **`loadRelationCountAndMap` does not exist**: the installed `typeorm@1.1.1` dropped the convenience method the [Computing counts and isLikedByMe without N+1 queries](#computing-counts-and-islikedbyme-without-n1-queries) excerpt is written against (verified directly against `node_modules/typeorm/query-builder/SelectQueryBuilder.d.ts`, only `loadRelationIdAndMap` remains). `PostsService.withCounts`/`getManyWithCounts` replace it with two correlated scalar subqueries via `addSelect` plus `getRawAndEntities`, still one round trip for the whole page, verified against a running instance that `commentsCount`/`likesCount` come back correct with no N+1 pattern in the SQL log.
+> - **`FindOptionsSelect` no longer accepts the array form**: `select: ['postId']` (the shape used in the README's own excerpt) is rejected by this version's stricter typing; `select: { postId: true }` is the equivalent object form.
+> - **Cursor and page-size hardening**: neither the README's excerpt nor the task list mention validating `limit`/`cursor`, but a negative `limit` or a malformed/cross-post `cursor` reached Postgres unvalidated and surfaced as a bare 500 (`LIMIT must not be negative`, `invalid input syntax for type uuid`) instead of a clean response. `PostsService`/`CommentsService` now clamp `limit` to `[1, 100]` and treat an unresolvable or malformed cursor the same way an absent one is already documented to behave: silently falling back to the first page. `CommentsService`'s cursor lookup is also scoped to `postId`, a cursor id belonging to a different post's comment previously anchored pagination on the wrong boundary.
+> - **Upload directory setup uses `OnModuleInit`, not a module-load side effect**: `PostsController` and `UsersController` (the latter is feature/auth code, fixed here too for consistency) now create their upload directories in `onModuleInit()` rather than as a bare top-level `mkdirSync` call, which ran on mere import and would crash the whole module graph in a read-only deploy environment. `OnModuleInit` fires once per app instance identically whether the app starts via `main.ts` or a test's `createNestApplication()` + `app.init()`.
+> - **E2E specs run serially**: `test/jest-e2e.json` now sets `maxWorkers: 1`. Running `auth.e2e-spec.ts` and `posts.e2e-spec.ts` together under Jest's default parallelism intermittently failed with a bare 500, both suites spin up a full app against the same real database and `uploads/` directory with no per-worker isolation. Invisible to CI (`ci.yml` only runs `npm test`, the unit suite), but reproducible on demand locally with two or more E2E spec files present, which is already true today.
+> - **Removed `test/app.e2e-spec.ts`**: `nest new`'s unmodified scaffold test for `GET /`, a route that has not existed since `feature/core-architecture`. Left in place it was a permanently-red spec masking real regressions in `npm run test:e2e`.
+
 ### Tasks
 
-- [ ] Create `PostsModule`/`PostsController`/`PostsService`, DTOs (`CreatePostDto`, `UpdatePostDto`)
-- [ ] Implement `GET /posts`: cursor pagination as described in [Cursor pagination](#cursor-pagination), the batched counts/`isLikedByMe` query from [Computing counts and isLikedByMe without N+1 queries](#computing-counts-and-islikedbyme-without-n1-queries)
-- [ ] Implement `GET /posts/:id`: 404 if missing, the same response shape as one item from the list endpoint
-- [ ] Implement `POST /posts`: multipart, `title`/`content` required, `image` optional via the same `FileInterceptor` pattern as the avatar upload, stored under `uploads/posts/`
-- [ ] Implement `PATCH /posts/:id`/`DELETE /posts/:id`: load the post first, respond `403` if `post.authorId !== currentUserId`, only then apply the update/delete; delete the associated image file from disk on `DELETE`
-- [ ] Confirm the TypeORM entity's `onDelete: 'CASCADE'` on `Comment.post`/`Like.post` actually removes dependent rows when a post is deleted, with an integration test, not just by reading the entity decorator
-- [ ] Create `CommentsModule`/`CommentsController`/`CommentsService`, `CreateCommentDto` (`content` required, non-empty)
-- [ ] Implement `GET /posts/:postId/comments`: cursor pagination mirroring the feed's, 404 if the post itself does not exist
-- [ ] Implement `POST /posts/:postId/comments`: 404 if the post does not exist, otherwise create and return the comment with `authorName`/`authorPhotoUrl` joined in
-- [ ] Implement `DELETE /comments/:id`: 404 if missing, 403 if `comment.authorId !== currentUserId`
-- [ ] Create `LikesModule`/`LikesController`/`LikesService`
-- [ ] Implement `POST /posts/:postId/likes` as a toggle: if a `Like` row for `(postId, currentUserId)` exists, delete it; otherwise create it; respond with the resulting `{ liked, likesCount }` computed from a single `count()` query after the toggle
-- [ ] Implement `GET /posts/:postId/likes/me`: a single indexed existence check, no batching needed at this scale (see [Computing counts and isLikedByMe without N+1 queries](#computing-counts-and-islikedbyme-without-n1-queries) for why the list endpoint needs batching and this one does not)
-- [ ] Use `Like`'s composite primary key (`@@id([postId, userId])`) to make the toggle's create step naturally idempotent against a duplicate request race, rather than checking existence and creating as two separate steps that a concurrent request could interleave with
-- [ ] Unit test: `PostsService.update`/`remove` throw a `ForbiddenException` when the caller is not the author
-- [ ] Unit test: creating a comment on a nonexistent post throws `NotFoundException` before any insert is attempted
-- [ ] Unit test: toggling twice in a row on a fresh post results in `liked: false` both times having flipped correctly in between
-- [ ] Integration test: `GET /posts` returns pages in the right order across two calls (first page, then the second using the first's `nextCursor`), with no overlap and no gap
-- [ ] Integration test: deleting another user's comment responds `403` and leaves the row in place
-- [ ] Integration test: `likesCount` in the response matches an independent `count()` query against the database after the toggle
+- [x] Create `PostsModule`/`PostsController`/`PostsService`, DTOs (`CreatePostDto`, `UpdatePostDto`)
+- [x] Implement `GET /posts`: cursor pagination as described in [Cursor pagination](#cursor-pagination), the batched counts/`isLikedByMe` query from [Computing counts and isLikedByMe without N+1 queries](#computing-counts-and-islikedbyme-without-n1-queries)
+- [x] Implement `GET /posts/:id`: 404 if missing, the same response shape as one item from the list endpoint
+- [x] Implement `POST /posts`: multipart, `title`/`content` required, `image` optional via the same `FileInterceptor` pattern as the avatar upload, stored under `uploads/posts/`
+- [x] Implement `PATCH /posts/:id`/`DELETE /posts/:id`: load the post first, respond `403` if `post.authorId !== currentUserId`, only then apply the update/delete; delete the associated image file from disk on `DELETE`
+- [x] Confirm the TypeORM entity's `onDelete: 'CASCADE'` on `Comment.post`/`Like.post` actually removes dependent rows when a post is deleted, with an integration test, not just by reading the entity decorator
+- [x] Create `CommentsModule`/`CommentsController`/`CommentsService`, `CreateCommentDto` (`content` required, non-empty)
+- [x] Implement `GET /posts/:postId/comments`: cursor pagination mirroring the feed's, 404 if the post itself does not exist
+- [x] Implement `POST /posts/:postId/comments`: 404 if the post does not exist, otherwise create and return the comment with `authorName`/`authorPhotoUrl` joined in
+- [x] Implement `DELETE /comments/:id`: 404 if missing, 403 if `comment.authorId !== currentUserId`
+- [x] Create `LikesModule`/`LikesController`/`LikesService`
+- [x] Implement `POST /posts/:postId/likes` as a toggle: if a `Like` row for `(postId, currentUserId)` exists, delete it; otherwise create it; respond with the resulting `{ liked, likesCount }` computed from a single `count()` query after the toggle
+- [x] Implement `GET /posts/:postId/likes/me`: a single indexed existence check, no batching needed at this scale (see [Computing counts and isLikedByMe without N+1 queries](#computing-counts-and-islikedbyme-without-n1-queries) for why the list endpoint needs batching and this one does not)
+- [x] Use `Like`'s composite primary key (`@@id([postId, userId])`) to make the toggle's create step naturally idempotent against a duplicate request race, rather than checking existence and creating as two separate steps that a concurrent request could interleave with
+- [x] Unit test: `PostsService.update`/`remove` throw a `ForbiddenException` when the caller is not the author
+- [x] Unit test: creating a comment on a nonexistent post throws `NotFoundException` before any insert is attempted
+- [x] Unit test: toggling twice in a row on a fresh post results in `liked: false` both times having flipped correctly in between
+- [x] Integration test: `GET /posts` returns pages in the right order across two calls (first page, then the second using the first's `nextCursor`), with no overlap and no gap
+- [x] Integration test: deleting another user's comment responds `403` and leaves the row in place
+- [x] Integration test: `likesCount` in the response matches an independent `count()` query against the database after the toggle
 
 ---
 
