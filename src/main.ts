@@ -9,7 +9,13 @@ import { createValidationPipe } from './common/pipes/create-validation-pipe';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
 
-  app.use(helmet());
+  app.use(
+    helmet({
+      // This API's responses (avatar/post images under /uploads) are meant to be
+      // fetched cross-origin by the separately-hosted client apps this API serves.
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Trellis API')
