@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Repository } from 'typeorm';
 import { LikesService } from './likes.service';
 import { Like } from './entities/like.entity';
@@ -9,6 +10,7 @@ describe('LikesService', () => {
   let service: LikesService;
   let likesRepo: jest.Mocked<Repository<Like>>;
   let postsRepo: jest.Mocked<Repository<Post>>;
+  let eventEmitter: jest.Mocked<EventEmitter2>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -30,12 +32,19 @@ describe('LikesService', () => {
             existsBy: jest.fn(),
           },
         },
+        {
+          provide: EventEmitter2,
+          useValue: {
+            emit: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     service = module.get(LikesService);
     likesRepo = module.get(getRepositoryToken(Like));
     postsRepo = module.get(getRepositoryToken(Post));
+    eventEmitter = module.get(EventEmitter2);
   });
 
   describe('toggle', () => {
@@ -47,12 +56,18 @@ describe('LikesService', () => {
       const first = await service.toggle('post-1', 'user-1');
       expect(first).toEqual({ liked: true, likesCount: 1 });
       expect(likesRepo.insert).toHaveBeenCalledWith({ postId: 'post-1', userId: 'user-1' });
+      expect(eventEmitter.emit).toHaveBeenCalledWith('like.created', {
+        postId: 'post-1',
+        userId: 'user-1',
+      });
 
+      eventEmitter.emit.mockClear();
       likesRepo.findOneBy.mockResolvedValueOnce({ postId: 'post-1', userId: 'user-1' } as Like);
       likesRepo.count.mockResolvedValueOnce(0);
       const second = await service.toggle('post-1', 'user-1');
       expect(second).toEqual({ liked: false, likesCount: 0 });
       expect(likesRepo.delete).toHaveBeenCalledWith({ postId: 'post-1', userId: 'user-1' });
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when the post does not exist', async () => {
