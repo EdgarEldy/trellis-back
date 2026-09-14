@@ -31,8 +31,9 @@ export class LikesService {
       await this.likesRepo.delete({ postId, userId });
       liked = false;
     } else {
-      liked = await this.createLike(postId, userId);
-      if (liked) {
+      const result = await this.createLike(postId, userId);
+      liked = result.liked;
+      if (result.wasInserted) {
         this.eventEmitter.emit('like.created', { postId, userId });
       }
     }
@@ -47,13 +48,16 @@ export class LikesService {
     return { liked };
   }
 
-  private async createLike(postId: string, userId: string): Promise<boolean> {
+  private async createLike(
+    postId: string,
+    userId: string,
+  ): Promise<{ liked: true; wasInserted: boolean }> {
     try {
       await this.likesRepo.insert({ postId, userId });
-      return true;
+      return { liked: true, wasInserted: true };
     } catch (error) {
       if (this.isUniqueViolation(error)) {
-        return true;
+        return { liked: true, wasInserted: false };
       }
       throw error;
     }
