@@ -558,21 +558,30 @@ Examples: `feat(posts): batch isLikedByMe across a page`, `fix(auth): reject an 
 
 Project scaffold, TypeORM entities and first migration, global pipes/filters/guards skeleton, Docker Compose, CI. No endpoints yet.
 
+> **Implementation notes (divergences from the plan above):**
+>
+> - **NestJS version**: `nest new` scaffolded NestJS 12 (the README references 11 as current). The project works with what was generated; NestJS 12 requires no compatibility shims on Node.js 24.
+> - **oxlint**: replaces ESLint in this project. `npm run lint` runs `oxlint src/ test/`.
+> - **Docker / PostgreSQL**: Docker runs inside WSL2 on this development machine. The PostgreSQL container (`postgresql`) is managed externally and was started before this branch. `docker-compose.yml` does not define a `postgres` service to avoid port conflicts; it is reserved for the `app` service in `feature/quality-and-release`. Connect via `DATABASE_URL=postgresql://postgres:123456@localhost:5432/trellis_dev` (WSL2 exposes container ports on Windows `localhost` automatically).
+> - **Migration**: generated manually (database was not available during scaffold). Run `npm run migration:run` after starting the PostgreSQL container.
+> - **Seed**: 5 users (Alice through Eve), 10 posts spread across all 5 authors, 10 comments per post (100 comments total), 30 likes at 3 per post. Run `npm run seed` after migrations.
+> - **Jest / ESM**: NestJS 12 ships pure-ESM packages. A `tsconfig.spec.json` (extending `tsconfig.build.json` with `module: commonjs`) is used by ts-jest so unit tests compile to CJS without triggering the ESM loader.
+
 ### Tasks
 
-- [ ] Create the project: `nest new trellis-back` (scaffolds NestJS 11), remove the generated sample `AppController`/`AppService` boilerplate
-- [ ] Pin the runtime: add `"engines": { "node": ">=24" }` to `package.json`, and an `.nvmrc` containing `24`, so both a human running `nvm use` and CI agree on the same major version
-- [ ] Configure `@nestjs/config` with `registerAs` namespaces (`app`, `database`, `jwt`): a `.env.example` with `DATABASE_URL`, `JWT_SECRET`, `JWT_ACCESS_TTL`; validate them at startup with a Joi schema (same pattern as the sister project) so a missing variable fails fast, not on the first request that needs it
-- [ ] Create `docker-compose.yml` with a `postgres` service and a data volume, so a local restart does not silently wipe the database; document `docker compose up -d postgres` in this branch's own short setup note
-- [ ] Install TypeORM and dependencies (`@nestjs/typeorm`, `typeorm`, `pg`); create `src/database/data-source.ts` (the TypeORM CLI `DataSource` used by migration commands) and `src/database/database.module.ts` (`TypeOrmModule.forRootAsync` with `synchronize: false`, all entity classes listed explicitly); add migration scripts to `package.json` (`migration:generate`, `migration:run`, `migration:revert`, `db:reset`)
-- [ ] Write all entity classes in full (see [Domain Model](#domain-model)), then run `npm run migration:generate -- -n Init` and `npm run migration:run` to generate and apply the first migration; confirm the tables exist with a `psql` or DB client
-- [ ] Write `src/database/seeds/seed.ts`: a handful of users, posts, comments, and likes, enough to exercise pagination (more than one page's worth of posts) manually once endpoints exist; wire it as a `seed` npm script (`ts-node -r tsconfig-paths/register src/database/seeds/seed.ts`) so `npm run seed` runs it
-- [ ] Create `src/common/filters/http-exception.filter.ts` and wire it as a global filter in `main.ts` (see [Error Handling](#error-handling))
-- [ ] Configure the global `ValidationPipe` with the `exceptionFactory` described in [Error Handling](#error-handling)
-- [ ] Create `src/common/decorators/public.decorator.ts` (`SetMetadata('isPublic', true)`) and `src/common/guards/auth.guard.ts` as an empty guard shell that always allows for now, extended by `feature/auth` once there is a token to actually check
-- [ ] Add a `GET /health` endpoint (public) returning `{ status: 'ok' }`, useful for both local sanity checks and container orchestration health checks later
-- [ ] Set up GitHub Actions `ci.yml`: `actions/setup-node@v4` pinned to Node.js 24 (reading the same `.nvmrc` rather than a hardcoded duplicate version), a `postgres` service container, `npm run lint`, `tsc --noEmit`, `npm run migration:run`, `npm test`
-- [ ] Unit test: the app module bootstraps without throwing when all required env vars are present
+- [x] Create the project: `nest new trellis-back` (scaffolds NestJS 12), remove the generated sample `AppController`/`AppService` boilerplate
+- [x] Pin the runtime: add `"engines": { "node": ">=24" }` to `package.json`, and an `.nvmrc` containing `24`, so both a human running `nvm use` and CI agree on the same major version
+- [x] Configure `@nestjs/config` with `registerAs` namespaces (`app`, `database`, `jwt`): a `.env.example` with `DATABASE_URL`, `JWT_SECRET`, `JWT_ACCESS_TTL`; validate them at startup with a Joi schema so a missing variable fails fast, not on the first request that needs it
+- [x] Create `docker-compose.yml` (placeholder for the `app` service; postgres is an external container in this environment)
+- [x] Install TypeORM and dependencies (`@nestjs/typeorm`, `typeorm`, `pg`); create `src/database/data-source.ts` and `src/database/database.module.ts` (`TypeOrmModule.forRootAsync` with `synchronize: false`, `autoLoadEntities: true`); add migration scripts to `package.json`
+- [x] Write all entity classes in full (see [Domain Model](#domain-model)); create the initial migration manually and run `npm run migration:run`
+- [x] Write `src/database/seeds/seed.ts` (5 users, 10 posts, 100 comments, 30 likes); run via `npm run seed`
+- [x] Create `src/common/filters/http-exception.filter.ts` and wire it as a global filter in `main.ts`
+- [x] Configure the global `ValidationPipe` with the `exceptionFactory` described in [Error Handling](#error-handling)
+- [x] Create `src/common/decorators/public.decorator.ts` and `src/common/guards/auth.guard.ts` (always-allow shell, completed in `feature/auth`)
+- [x] Add a `GET /health` endpoint (public) returning `{ status: 'ok' }`
+- [x] Set up GitHub Actions `ci.yml`: `actions/setup-node@v4` with `node-version-file: .nvmrc`, a `postgres:16-alpine` service container, `npm ci`, `npm run build`, `npm run migration:run`, `npm test`
+- [x] Unit tests: Joi validation schema (5 test cases), AppModule config import smoke test
 
 ---
 
@@ -580,24 +589,32 @@ Project scaffold, TypeORM entities and first migration, global pipes/filters/gua
 
 Registration, login, refresh, logout, profile retrieval/update, avatar upload: everything centered on the `User` entity and the authenticated session tied to it, plus the guard every later branch depends on.
 
+> **Implementation notes (divergences from the plan above):**
+>
+> - **No `refresh-token.repository.ts`**: the [Project Structure](#project-structure) sketch lists one, but [Non-negotiable constraints](#non-negotiable-constraints) rules out a Repository layer wrapping TypeORM one-to-one. `AuthService` injects `Repository<RefreshToken>` directly via `@InjectRepository`, the same pattern already used for `User`.
+> - **Node 24 required to actually run the test suite**: every `@nestjs/*` package ships pure ESM. Jest can only `require()` an ESM file natively (no Babel transform) via `node:vm`'s `SourceTextModule`, which is gated behind Node's `--experimental-vm-modules` flag. `cross-env` was added so every `test*` script in `package.json` sets `NODE_OPTIONS=--experimental-vm-modules` identically on the CI's Linux runner and a Windows/PowerShell dev machine; this was a real gap, no spec in `feature/core-architecture` had imported `@nestjs/testing` yet to hit it.
+> - **`DatabaseModule` fix**: `autoLoadEntities: true` only registers an entity that some module passes to `TypeOrmModule.forFeature`; it does not follow a relation target that has no module yet. `User`'s relations reach `Post`/`Comment`/`Like`/`Device`, none of which have a module until `feature/posts`/`feature/integrations`, so the app failed to boot at all ("Entity metadata for User#posts was not found") the moment `AuthModule` and `UsersModule` registered `User` via `forFeature`. Fixed by loading every `*.entity.ts` file through the same glob `src/database/data-source.ts` already uses for the CLI, instead of relying on `autoLoadEntities`.
+> - **`test/jest-e2e.json` fix**: compiling a single `*.e2e-spec.ts` file in isolation made ts-jest's inferred TypeScript `rootDir` ambiguous (`TS5011`), failing every E2E spec, including the pre-existing `test/app.e2e-spec.ts`, before a single test ran. Fixed with an inline `tsconfig: { rootDir: "." }` override in the transform config.
+> - **Local Postgres credentials**: this development machine's Docker Postgres is a shared, general-purpose container (not the dedicated `postgresql`/`postgres:123456` one `feature/core-architecture` was written against), so local `.env` uses `postgresql://admin:admin@localhost:5432/trellis_dev` against a `trellis_dev` database created for this project. CI is unaffected; `ci.yml` runs its own ephemeral `postgres:16-alpine` service container with its own credentials.
+
 ### Tasks
 
-- [ ] Create `AuthModule`/`AuthController`/`AuthService`, and DTOs (`RegisterDto`, `LoginDto`, `RefreshDto`) with `class-validator` decorators (`@IsEmail()`, `@MinLength(8)` on the password, `@IsNotEmpty()` on `displayName`)
-- [ ] Implement `register()`: hash the password with `bcrypt.hash`, create the `User`, then issue tokens exactly as `login()` does, so there is exactly one place that mints a token pair
-- [ ] Implement `login()`: look up the user by email, `bcrypt.compare` the password, respond `401` on either a missing user or a wrong password with the same message (`"Invalid email or password"`), specifically so a client cannot distinguish "no such account" from "wrong password" by response alone
-- [ ] Implement token issuance as one shared private method: sign a 15-minute JWT (`sub: user.id`) via `JwtService.signAsync`, generate a 32-byte random hex refresh token via Node's `crypto.randomBytes`, store its `sha256` hash (not the token itself) in `RefreshToken` with an expiry, return the plaintext refresh token to the client exactly once, it is never retrievable again
-- [ ] Implement `refresh()`: hash the submitted token, look up the matching `RefreshToken` row, reject with `401` if not found, revoked, or past `expiresAt`; otherwise sign and return a new access token only, per the contract in [Auth Model](#auth-model)
-- [ ] Implement `logout()`: hash the submitted token, set `revokedAt` on the matching row if found; respond `204` either way, a logout call is not the place to reveal whether a token was ever valid
-- [ ] Finish `src/common/guards/auth.guard.ts`: read the `Authorization` header, reject `401` if missing or malformed, `JwtService.verifyAsync` the token, reject `401` on a verification failure (expired, bad signature), otherwise attach `{ userId: payload.sub }` to the request; skip entirely on any route carrying the `@Public()` metadata
-- [ ] Register the guard globally via `APP_GUARD` in `AppModule`, then mark `/auth/register`, `/auth/login`, `/auth/refresh` as `@Public()`
-- [ ] Create `src/common/decorators/current-user.decorator.ts`: a `createParamDecorator` reading `request.userId`, so a controller method can declare `@CurrentUser() userId: string` instead of reaching into the raw request
-- [ ] Create `UsersModule`/`UsersController`/`UsersService`; implement `GET /users/:id` (404 if no such user, otherwise the public `User` shape, never `passwordHash`) and `PATCH /users/me` (`@CurrentUser()` for the target id, a `UpdateProfileDto` validating `displayName` when present)
-- [ ] Implement `POST /users/me/avatar`: a `FileInterceptor('file')` (Multer, disk storage under `uploads/avatars/`), validate the mime type is an image and the size is under a configured limit before accepting it, respond with `{ photoUrl }` pointing at a static path Nest serves via `ServeStaticModule`; delete the previous avatar file from disk when a new one is uploaded, so `uploads/avatars/` does not grow unbounded with orphaned files
-- [ ] Unit test: `login()` returns the same `401` message for a nonexistent email and for a wrong password
-- [ ] Unit test: `refresh()` rejects a token whose hash matches no row, and separately, one whose row exists but is revoked
-- [ ] Unit test: `UsersService.findById` throws a `NotFoundException` for an unknown id
-- [ ] Integration test (Supertest): register, then call a protected route with the returned access token, then again with no token at all, asserting `200` and `401` respectively
-- [ ] Integration test: uploading a non-image file to `/users/me/avatar` is rejected with `400` before it ever touches disk
+- [x] Create `AuthModule`/`AuthController`/`AuthService`, and DTOs (`RegisterDto`, `LoginDto`, `RefreshDto`) with `class-validator` decorators (`@IsEmail()`, `@MinLength(8)` on the password, `@IsNotEmpty()` on `displayName`)
+- [x] Implement `register()`: hash the password with `bcrypt.hash`, create the `User`, then issue tokens exactly as `login()` does, so there is exactly one place that mints a token pair
+- [x] Implement `login()`: look up the user by email, `bcrypt.compare` the password, respond `401` on either a missing user or a wrong password with the same message (`"Invalid email or password"`), specifically so a client cannot distinguish "no such account" from "wrong password" by response alone
+- [x] Implement token issuance as one shared private method: sign a 15-minute JWT (`sub: user.id`) via `JwtService.signAsync`, generate a 32-byte random hex refresh token via Node's `crypto.randomBytes`, store its `sha256` hash (not the token itself) in `RefreshToken` with an expiry, return the plaintext refresh token to the client exactly once, it is never retrievable again
+- [x] Implement `refresh()`: hash the submitted token, look up the matching `RefreshToken` row, reject with `401` if not found, revoked, or past `expiresAt`; otherwise sign and return a new access token only, per the contract in [Auth Model](#auth-model)
+- [x] Implement `logout()`: hash the submitted token, set `revokedAt` on the matching row if found; respond `204` either way, a logout call is not the place to reveal whether a token was ever valid
+- [x] Finish `src/common/guards/auth.guard.ts`: read the `Authorization` header, reject `401` if missing or malformed, `JwtService.verifyAsync` the token, reject `401` on a verification failure (expired, bad signature), otherwise attach `{ userId: payload.sub }` to the request; skip entirely on any route carrying the `@Public()` metadata
+- [x] Register the guard globally via `APP_GUARD` in `AppModule`, then mark `/auth/register`, `/auth/login`, `/auth/refresh` as `@Public()`
+- [x] Create `src/common/decorators/current-user.decorator.ts`: a `createParamDecorator` reading `request.userId`, so a controller method can declare `@CurrentUser() userId: string` instead of reaching into the raw request
+- [x] Create `UsersModule`/`UsersController`/`UsersService`; implement `GET /users/:id` (404 if no such user, otherwise the public `User` shape, never `passwordHash`) and `PATCH /users/me` (`@CurrentUser()` for the target id, a `UpdateProfileDto` validating `displayName` when present)
+- [x] Implement `POST /users/me/avatar`: a `FileInterceptor('file')` (Multer, disk storage under `uploads/avatars/`), validate the mime type is an image and the size is under a configured limit before accepting it, respond with `{ photoUrl }` pointing at a static path Nest serves via `ServeStaticModule`; delete the previous avatar file from disk when a new one is uploaded, so `uploads/avatars/` does not grow unbounded with orphaned files
+- [x] Unit test: `login()` returns the same `401` message for a nonexistent email and for a wrong password
+- [x] Unit test: `refresh()` rejects a token whose hash matches no row, and separately, one whose row exists but is revoked
+- [x] Unit test: `UsersService.findById` throws a `NotFoundException` for an unknown id
+- [x] Integration test (Supertest): register, then call a protected route with the returned access token, then again with no token at all, asserting `200` and `401` respectively
+- [x] Integration test: uploading a non-image file to `/users/me/avatar` is rejected with `400` before it ever touches disk
 
 ---
 
@@ -605,28 +622,37 @@ Registration, login, refresh, logout, profile retrieval/update, avatar upload: e
 
 The full post interaction surface: posts, comments, and likes together, since a comment or a like has no meaning without a post already existing.
 
+> **Implementation notes (divergences from the plan above):**
+>
+> - **`loadRelationCountAndMap` does not exist**: the installed `typeorm@1.1.1` dropped the convenience method the [Computing counts and isLikedByMe without N+1 queries](#computing-counts-and-islikedbyme-without-n1-queries) excerpt is written against (verified directly against `node_modules/typeorm/query-builder/SelectQueryBuilder.d.ts`, only `loadRelationIdAndMap` remains). `PostsService.withCounts`/`getManyWithCounts` replace it with two correlated scalar subqueries via `addSelect` plus `getRawAndEntities`, still one round trip for the whole page, verified against a running instance that `commentsCount`/`likesCount` come back correct with no N+1 pattern in the SQL log.
+> - **`FindOptionsSelect` no longer accepts the array form**: `select: ['postId']` (the shape used in the README's own excerpt) is rejected by this version's stricter typing; `select: { postId: true }` is the equivalent object form.
+> - **Cursor and page-size hardening**: neither the README's excerpt nor the task list mention validating `limit`/`cursor`, but a negative `limit` or a malformed/cross-post `cursor` reached Postgres unvalidated and surfaced as a bare 500 (`LIMIT must not be negative`, `invalid input syntax for type uuid`) instead of a clean response. `PostsService`/`CommentsService` now clamp `limit` to `[1, 100]` and treat an unresolvable or malformed cursor the same way an absent one is already documented to behave: silently falling back to the first page. `CommentsService`'s cursor lookup is also scoped to `postId`, a cursor id belonging to a different post's comment previously anchored pagination on the wrong boundary.
+> - **Upload directory setup uses `OnModuleInit`, not a module-load side effect**: `PostsController` and `UsersController` (the latter is feature/auth code, fixed here too for consistency) now create their upload directories in `onModuleInit()` rather than as a bare top-level `mkdirSync` call, which ran on mere import and would crash the whole module graph in a read-only deploy environment. `OnModuleInit` fires once per app instance identically whether the app starts via `main.ts` or a test's `createNestApplication()` + `app.init()`.
+> - **E2E specs run serially**: `test/jest-e2e.json` now sets `maxWorkers: 1`. Running `auth.e2e-spec.ts` and `posts.e2e-spec.ts` together under Jest's default parallelism intermittently failed with a bare 500, both suites spin up a full app against the same real database and `uploads/` directory with no per-worker isolation. Invisible to CI (`ci.yml` only runs `npm test`, the unit suite), but reproducible on demand locally with two or more E2E spec files present, which is already true today.
+> - **Removed `test/app.e2e-spec.ts`**: `nest new`'s unmodified scaffold test for `GET /`, a route that has not existed since `feature/core-architecture`. Left in place it was a permanently-red spec masking real regressions in `npm run test:e2e`.
+
 ### Tasks
 
-- [ ] Create `PostsModule`/`PostsController`/`PostsService`, DTOs (`CreatePostDto`, `UpdatePostDto`)
-- [ ] Implement `GET /posts`: cursor pagination as described in [Cursor pagination](#cursor-pagination), the batched counts/`isLikedByMe` query from [Computing counts and isLikedByMe without N+1 queries](#computing-counts-and-islikedbyme-without-n1-queries)
-- [ ] Implement `GET /posts/:id`: 404 if missing, the same response shape as one item from the list endpoint
-- [ ] Implement `POST /posts`: multipart, `title`/`content` required, `image` optional via the same `FileInterceptor` pattern as the avatar upload, stored under `uploads/posts/`
-- [ ] Implement `PATCH /posts/:id`/`DELETE /posts/:id`: load the post first, respond `403` if `post.authorId !== currentUserId`, only then apply the update/delete; delete the associated image file from disk on `DELETE`
-- [ ] Confirm the TypeORM entity's `onDelete: 'CASCADE'` on `Comment.post`/`Like.post` actually removes dependent rows when a post is deleted, with an integration test, not just by reading the entity decorator
-- [ ] Create `CommentsModule`/`CommentsController`/`CommentsService`, `CreateCommentDto` (`content` required, non-empty)
-- [ ] Implement `GET /posts/:postId/comments`: cursor pagination mirroring the feed's, 404 if the post itself does not exist
-- [ ] Implement `POST /posts/:postId/comments`: 404 if the post does not exist, otherwise create and return the comment with `authorName`/`authorPhotoUrl` joined in
-- [ ] Implement `DELETE /comments/:id`: 404 if missing, 403 if `comment.authorId !== currentUserId`
-- [ ] Create `LikesModule`/`LikesController`/`LikesService`
-- [ ] Implement `POST /posts/:postId/likes` as a toggle: if a `Like` row for `(postId, currentUserId)` exists, delete it; otherwise create it; respond with the resulting `{ liked, likesCount }` computed from a single `count()` query after the toggle
-- [ ] Implement `GET /posts/:postId/likes/me`: a single indexed existence check, no batching needed at this scale (see [Computing counts and isLikedByMe without N+1 queries](#computing-counts-and-islikedbyme-without-n1-queries) for why the list endpoint needs batching and this one does not)
-- [ ] Use `Like`'s composite primary key (`@@id([postId, userId])`) to make the toggle's create step naturally idempotent against a duplicate request race, rather than checking existence and creating as two separate steps that a concurrent request could interleave with
-- [ ] Unit test: `PostsService.update`/`remove` throw a `ForbiddenException` when the caller is not the author
-- [ ] Unit test: creating a comment on a nonexistent post throws `NotFoundException` before any insert is attempted
-- [ ] Unit test: toggling twice in a row on a fresh post results in `liked: false` both times having flipped correctly in between
-- [ ] Integration test: `GET /posts` returns pages in the right order across two calls (first page, then the second using the first's `nextCursor`), with no overlap and no gap
-- [ ] Integration test: deleting another user's comment responds `403` and leaves the row in place
-- [ ] Integration test: `likesCount` in the response matches an independent `count()` query against the database after the toggle
+- [x] Create `PostsModule`/`PostsController`/`PostsService`, DTOs (`CreatePostDto`, `UpdatePostDto`)
+- [x] Implement `GET /posts`: cursor pagination as described in [Cursor pagination](#cursor-pagination), the batched counts/`isLikedByMe` query from [Computing counts and isLikedByMe without N+1 queries](#computing-counts-and-islikedbyme-without-n1-queries)
+- [x] Implement `GET /posts/:id`: 404 if missing, the same response shape as one item from the list endpoint
+- [x] Implement `POST /posts`: multipart, `title`/`content` required, `image` optional via the same `FileInterceptor` pattern as the avatar upload, stored under `uploads/posts/`
+- [x] Implement `PATCH /posts/:id`/`DELETE /posts/:id`: load the post first, respond `403` if `post.authorId !== currentUserId`, only then apply the update/delete; delete the associated image file from disk on `DELETE`
+- [x] Confirm the TypeORM entity's `onDelete: 'CASCADE'` on `Comment.post`/`Like.post` actually removes dependent rows when a post is deleted, with an integration test, not just by reading the entity decorator
+- [x] Create `CommentsModule`/`CommentsController`/`CommentsService`, `CreateCommentDto` (`content` required, non-empty)
+- [x] Implement `GET /posts/:postId/comments`: cursor pagination mirroring the feed's, 404 if the post itself does not exist
+- [x] Implement `POST /posts/:postId/comments`: 404 if the post does not exist, otherwise create and return the comment with `authorName`/`authorPhotoUrl` joined in
+- [x] Implement `DELETE /comments/:id`: 404 if missing, 403 if `comment.authorId !== currentUserId`
+- [x] Create `LikesModule`/`LikesController`/`LikesService`
+- [x] Implement `POST /posts/:postId/likes` as a toggle: if a `Like` row for `(postId, currentUserId)` exists, delete it; otherwise create it; respond with the resulting `{ liked, likesCount }` computed from a single `count()` query after the toggle
+- [x] Implement `GET /posts/:postId/likes/me`: a single indexed existence check, no batching needed at this scale (see [Computing counts and isLikedByMe without N+1 queries](#computing-counts-and-islikedbyme-without-n1-queries) for why the list endpoint needs batching and this one does not)
+- [x] Use `Like`'s composite primary key (`@@id([postId, userId])`) to make the toggle's create step naturally idempotent against a duplicate request race, rather than checking existence and creating as two separate steps that a concurrent request could interleave with
+- [x] Unit test: `PostsService.update`/`remove` throw a `ForbiddenException` when the caller is not the author
+- [x] Unit test: creating a comment on a nonexistent post throws `NotFoundException` before any insert is attempted
+- [x] Unit test: toggling twice in a row on a fresh post results in `liked: false` both times having flipped correctly in between
+- [x] Integration test: `GET /posts` returns pages in the right order across two calls (first page, then the second using the first's `nextCursor`), with no overlap and no gap
+- [x] Integration test: deleting another user's comment responds `403` and leaves the row in place
+- [x] Integration test: `likesCount` in the response matches an independent `count()` query against the database after the toggle
 
 ---
 
@@ -634,17 +660,31 @@ The full post interaction surface: posts, comments, and likes together, since a 
 
 Rate limiting, security headers, structured logging, Swagger docs, full test coverage, and a production-ready container.
 
+> **Implementation notes (divergences from the plan above):**
+>
+> - **`.npmrc` with `legacy-peer-deps=true`**: `@nestjs/throttler`'s latest release (6.5.0) declares peer support only up to `@nestjs/common@11`, not this project's `@nestjs/common@12`; installing it needed `--legacy-peer-deps`. That alone would have silently broken `docker build .` and `ci.yml`'s `npm ci` step (neither can pass an install-time flag), confirmed by actually running `docker build .` and watching it fail with `ERESOLVE` before this fix, then succeed after. `.npmrc` applies the relaxation everywhere `npm install`/`npm ci` runs, local, Docker, CI, with no per-command flag to remember.
+> - **Structured logging uses Express middleware, not a Nest interceptor**: an interceptor only wraps the handler, guards run before it, so a request `AuthGuard` or `ThrottlerGuard` rejects never reaches an interceptor's `intercept()` at all, verified live (a 401 produced no log line under the interceptor version). `src/common/middleware/logging.middleware.ts`, wired via `AppModule.configure()`, runs ahead of every guard instead and logs every request regardless of outcome.
+> - **Helmet's default CSP does not need loosening for `/docs`**: this `@nestjs/swagger` version externalizes its bootstrap script into a same-origin `swagger-ui-init.js` file rather than an inline `<script>` tag (confirmed by fetching that file's actual served content), so helmet's default `script-src 'self'` never blocks it. Two independent code-review passes flagged this as a likely conflict based on how other Swagger UI versions embed their init script; verified false for this one, three ways (served HTML has zero inline `<script>` tags, the library's own `toInlineScriptTag` helper is only reachable via a `customJsStr` option this project never passes, and the init script's actual fetched content is the real bootstrap code).
+> - **Helmet's default `Cross-Origin-Resource-Policy: same-origin` did need overriding**: it would have silently broken `pulse-feed-app` (the Ionic/Angular web client) loading `/uploads/avatars|posts/*` images cross-origin, `social_feed_app` (Flutter) was never at risk since native image loading isn't subject to a browser-enforced header. Fixed with `crossOriginResourcePolicy: { policy: 'cross-origin' }`, verified via the response header actually changing.
+> - **Production safety net for `JWT_SECRET`**: nothing previously stopped `NODE_ENV=production` from booting with the well-known placeholder secret committed in `.env.example`. `main.ts` now refuses to start in that exact combination; verified live both ways (dev boots fine with the placeholder, forcing `NODE_ENV=production` with it throws before any route is mapped) and caught for real when `docker compose up` was first run without exporting a real `JWT_SECRET`.
+> - **`GET /health` is exempt from rate limiting** (`@SkipThrottle()`): the global 100/min-per-IP default would otherwise apply to liveness/readiness probes too, verified live with 120 consecutive requests all returning 200 with no `X-RateLimit-*` headers at all.
+> - **`docker-compose.yml` is self-contained**: both `postgres` and `app` services are defined (the file previously deferred `app` to this branch and relied on an externally-managed Postgres). `postgres`'s port is deliberately not published to the host, `app` reaches it only over the internal compose network, so this file never conflicts with a separately-running Postgres container a developer already has bound to host port 5432, verified by running both simultaneously without incident. `app`'s command chains `migration:run:prod` (a new script running the plain `typeorm` CLI against the compiled `dist/database/data-source.js`, since the slim production image has no `ts-node`/`typescript` to run the `.ts`-based `migration:run`) before `node dist/main`, gated by a `postgres` healthcheck and carrying its own healthcheck (Node's built-in `http` module, since `node:24-alpine` ships neither `curl` nor `wget`).
+> - **Full stack verified live**: `docker build .`, `docker compose up --build`, migrations running inside the container, the app reaching `healthy`, and a real register→create-post flow against the containerized app were all actually run, not just read for correctness, twice each (once to catch the `.npmrc`-in-Dockerfile gap, once to confirm the fix).
+> - **Test coverage gaps filled**: `AuthGuard`, `cursor-pagination.util.ts`, and `HttpExceptionFilter` all sat at 0-33% unit coverage since earlier branches, exercised only indirectly through E2E specs; each now has a dedicated spec. The `GET /health` → 200 / unknown route → 404 / invalid body → 400 bootstrap checks speced since `feature/core-architecture` but never written now exist in `test/health.e2e-spec.ts`, built without `AppModule` so they run with no database dependency at all; a companion assertion in `auth.e2e-spec.ts` (which does boot the real `AppModule`) separately proves `/health` stays public under the actual `AuthGuard`/`ThrottlerGuard` stack, since the isolated spec has no guards registered to prove that against.
+> - **`test:e2e` script**: already existed since `feature/core-architecture`'s scaffold and already reads `DATABASE_URL` from the environment rather than hardcoding the dev database; no new script was needed, only the fixes above to make it actually reliable.
+> - **`createValidationPipe` extracted**: the `whitelist: true` + `exceptionFactory` config was duplicated across `main.ts` and three E2E specs (a fourth copy, in this branch's own new `health.e2e-spec.ts`, was caught before it shipped); all four now import one shared factory from `src/common/pipes/create-validation-pipe.ts`.
+
 ### Tasks
 
-- [ ] Add `@nestjs/throttler`: a sensible default rate limit (for example 100 requests/minute per IP), tighter specifically on `/auth/login`/`/auth/register` to slow down credential-stuffing attempts
-- [ ] Add `helmet` for standard security headers
-- [ ] Add structured request logging (method, path, status, duration) via a Nest interceptor, excluding request/response bodies from the log (avoids ever logging a password or a token)
-- [ ] Add `@nestjs/swagger`: `@ApiProperty()` on every DTO field, `@ApiTags()` per controller, serve the UI at `/docs`
-- [ ] Fill any test coverage gaps flagged in earlier branches; add a `test:e2e` script running the full Supertest suite against a dedicated test database (a separate `DATABASE_URL`, never the dev database)
-- [ ] Write a production `Dockerfile` (multi-stage, `node:24-alpine` as the base image for both stages: install and build in one stage, copy only the compiled output and production dependencies into a slim final image)
-- [ ] Extend `docker-compose.yml` with the app service itself, depending on `postgres`, running `npm run migration:run` (i.e. `typeorm migration:run`) before `node dist/main.js` on container start
-- [ ] Extend `ci.yml`: build the production Docker image on every PR to `master`, as a build-only check (no registry push required for this tutorial)
-- [ ] Document the environment variables a real deployment needs beyond the ones already in `.env.example` (a production `JWT_SECRET`, `DATABASE_URL` pointing at a managed Postgres instance)
+- [x] Add `@nestjs/throttler`: a sensible default rate limit (for example 100 requests/minute per IP), tighter specifically on `/auth/login`/`/auth/register` to slow down credential-stuffing attempts
+- [x] Add `helmet` for standard security headers
+- [x] Add structured request logging (method, path, status, duration) via a Nest interceptor, excluding request/response bodies from the log (avoids ever logging a password or a token)
+- [x] Add `@nestjs/swagger`: `@ApiProperty()` on every DTO field, `@ApiTags()` per controller, serve the UI at `/docs`
+- [x] Fill any test coverage gaps flagged in earlier branches; add a `test:e2e` script running the full Supertest suite against a dedicated test database (a separate `DATABASE_URL`, never the dev database)
+- [x] Write a production `Dockerfile` (multi-stage, `node:24-alpine` as the base image for both stages: install and build in one stage, copy only the compiled output and production dependencies into a slim final image)
+- [x] Extend `docker-compose.yml` with the app service itself, depending on `postgres`, running `npm run migration:run` (i.e. `typeorm migration:run`) before `node dist/main.js` on container start
+- [x] Extend `ci.yml`: build the production Docker image on every PR to `master`, as a build-only check (no registry push required for this tutorial)
+- [x] Document the environment variables a real deployment needs beyond the ones already in `.env.example` (a production `JWT_SECRET`, `DATABASE_URL` pointing at a managed Postgres instance)
 
 ---
 
