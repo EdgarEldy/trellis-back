@@ -24,6 +24,8 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 const AVATAR_UPLOAD_DIR = join(process.cwd(), 'uploads', 'avatars');
 const AVATAR_MAX_SIZE_BYTES = 5 * 1024 * 1024;
 
+mkdirSync(AVATAR_UPLOAD_DIR, { recursive: true });
+
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -46,10 +48,7 @@ export class UsersController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
-        destination: (_req, _file, cb) => {
-          mkdirSync(AVATAR_UPLOAD_DIR, { recursive: true });
-          cb(null, AVATAR_UPLOAD_DIR);
-        },
+        destination: AVATAR_UPLOAD_DIR,
         filename: (_req, file, cb) => {
           cb(null, `${randomUUID()}${extname(file.originalname)}`);
         },
@@ -66,11 +65,8 @@ export class UsersController {
   )
   uploadAvatar(
     @CurrentUser() userId: string,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile() file: Express.Multer.File | undefined,
   ): Promise<{ photoUrl: string }> {
-    if (!file) {
-      throw new BadRequestException('File must be an image');
-    }
-    return this.usersService.updateAvatar(userId, file.filename);
+    return this.usersService.updateAvatar(userId, file);
   }
 }
