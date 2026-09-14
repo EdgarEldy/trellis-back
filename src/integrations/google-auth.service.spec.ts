@@ -45,10 +45,21 @@ describe('GoogleAuthService', () => {
     );
   });
 
+  it('rejects a token whose email claim is not verified', async () => {
+    mockVerifyIdToken.mockResolvedValue({
+      getPayload: () => ({ email: 'unverified@example.com', email_verified: false }),
+    });
+
+    await expect(service.verifyIdToken('unverified-email-token')).rejects.toThrow(
+      UnauthorizedException,
+    );
+  });
+
   it('returns the verified email, name and picture for a valid token', async () => {
     mockVerifyIdToken.mockResolvedValue({
       getPayload: () => ({
         email: 'user@example.com',
+        email_verified: true,
         name: 'A User',
         picture: 'https://example.com/photo.jpg',
       }),
