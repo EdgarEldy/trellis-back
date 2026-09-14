@@ -22,7 +22,9 @@ export class GoogleAuthService {
       throw new UnauthorizedException('Google sign-in is not configured');
     }
 
-    let payload: { email?: string; name?: string; picture?: string } | undefined;
+    let payload:
+      | { email?: string; email_verified?: boolean; name?: string; picture?: string }
+      | undefined;
     try {
       const ticket = await this.client.verifyIdToken({ idToken, audience: clientId });
       payload = ticket.getPayload();
@@ -30,7 +32,7 @@ export class GoogleAuthService {
       throw new UnauthorizedException('Invalid Google ID token');
     }
 
-    if (!payload?.email) {
+    if (!payload?.email || !payload.email_verified) {
       throw new UnauthorizedException('Invalid Google ID token');
     }
 
