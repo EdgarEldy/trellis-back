@@ -54,3 +54,19 @@ jobs:
           DATABASE_URL: postgresql://trellis:trellis@localhost:5432/trellis_test
           JWT_SECRET: ci-test-secret
           JWT_ACCESS_TTL: 900
+
+  docker-build:
+    if: github.event_name == 'pull_request' && github.base_ref == 'master'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: trellis-back:ci

@@ -1,7 +1,10 @@
 import { Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { LikesService, ToggleLikeResult } from './likes.service';
 
+@ApiTags('likes')
+@ApiBearerAuth()
 @Controller()
 export class LikesController {
   constructor(private readonly likesService: LikesService) {}

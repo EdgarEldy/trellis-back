@@ -1,12 +1,26 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { Comment } from '../entities/comment.entity';
 
 export class CommentResponseDto {
+  @ApiProperty()
   id: string;
+
+  @ApiProperty()
   postId: string;
+
+  @ApiProperty()
   authorId: string;
+
+  @ApiProperty()
   authorName: string;
+
+  @ApiProperty({ nullable: true, type: String })
   authorPhotoUrl: string | null;
+
+  @ApiProperty()
   content: string;
+
+  @ApiProperty()
   createdAt: string;
 
   static fromEntity(comment: Comment): CommentResponseDto {
