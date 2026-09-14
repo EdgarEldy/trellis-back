@@ -6,8 +6,25 @@ import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { createValidationPipe } from './common/pipes/create-validation-pipe';
 
+const INSECURE_JWT_SECRET = 'change-me-in-production';
+
+function assertProductionSecretsAreConfigured(configService: ConfigService): void {
+  const nodeEnv = configService.get<string>('app.nodeEnv');
+  const jwtSecret = configService.get<string>('jwt.secret');
+
+  if (nodeEnv === 'production' && jwtSecret === INSECURE_JWT_SECRET) {
+    throw new Error(
+      `Refusing to start with NODE_ENV=production and the placeholder JWT_SECRET ` +
+        `('${INSECURE_JWT_SECRET}'). Set a real secret, see .env.example.`,
+    );
+  }
+}
+
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
+
+  const configService = app.get(ConfigService);
+  assertProductionSecretsAreConfigured(configService);
 
   app.use(
     helmet({
@@ -30,7 +47,6 @@ async function bootstrap(): Promise<void> {
 
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  const configService = app.get(ConfigService);
   const port = configService.get<number>('app.port') ?? 3000;
 
   await app.listen(port);
