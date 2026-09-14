@@ -31,6 +31,7 @@ import { LikesModule } from './likes/likes.module';
     }),
     ThrottlerModule.forRoot({
       throttlers: [{ ttl: 60_000, limit: 100 }],
+      errorMessage: 'Too many requests, please try again later',
     }),
     DatabaseModule,
     EventEmitterModule.forRoot(),
