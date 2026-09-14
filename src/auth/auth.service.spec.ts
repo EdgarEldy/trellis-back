@@ -8,11 +8,13 @@ import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { User } from '../users/entities/user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
+import { GoogleAuthService } from '../integrations/google-auth.service';
 
 describe('AuthService', () => {
   let service: AuthService;
   let usersRepo: jest.Mocked<Repository<User>>;
   let refreshTokensRepo: jest.Mocked<Repository<RefreshToken>>;
+  let googleAuthService: jest.Mocked<GoogleAuthService>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -52,12 +54,19 @@ describe('AuthService', () => {
             }),
           },
         },
+        {
+          provide: GoogleAuthService,
+          useValue: {
+            verifyIdToken: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     service = module.get(AuthService);
     usersRepo = module.get(getRepositoryToken(User));
     refreshTokensRepo = module.get(getRepositoryToken(RefreshToken));
+    googleAuthService = module.get(GoogleAuthService);
   });
 
   describe('register', () => {
@@ -131,6 +140,52 @@ describe('AuthService', () => {
       expect(result.accessToken).toBe('signed-access-token');
       expect(result.refreshToken).toEqual(expect.any(String));
       expect(result.user.email).toBe('known@example.com');
+    });
+  });
+
+  describe('loginWithGoogle', () => {
+    it('rejects a tampered or expired Google ID token before any database lookup', async () => {
+      googleAuthService.verifyIdToken.mockRejectedValue(
+        new UnauthorizedException('Invalid Google ID token'),
+      );
+
+      await expect(service.loginWithGoogle('bad-token')).rejects.toThrow(UnauthorizedException);
+      expect(usersRepo.findOneBy).not.toHaveBeenCalled();
+    });
+
+    it('creates a new passwordless account when no user matches the verified email', async () => {
+      googleAuthService.verifyIdToken.mockResolvedValue({
+        email: 'new-google-user@example.com',
+        displayName: 'New Google User',
+        photoUrl: 'https://example.com/photo.jpg',
+      });
+      usersRepo.findOneBy.mockResolvedValue(null);
+
+      const result = await service.loginWithGoogle('good-token');
+
+      const savedUser = usersRepo.save.mock.calls[0][0] as Partial<User>;
+      expect(savedUser.passwordHash).toBeNull();
+      expect(savedUser.email).toBe('new-google-user@example.com');
+      expect(result.user.email).toBe('new-google-user@example.com');
+    });
+
+    it('reuses the existing account when one already matches the verified email', async () => {
+      googleAuthService.verifyIdToken.mockResolvedValue({
+        email: 'known@example.com',
+        displayName: 'Known User',
+        photoUrl: null,
+      });
+      usersRepo.findOneBy.mockResolvedValue({
+        id: 'user-1',
+        email: 'known@example.com',
+        displayName: 'Known User',
+        photoUrl: null,
+        createdAt: new Date(),
+      } as User);
+
+      await service.loginWithGoogle('good-token');
+
+      expect(usersRepo.save).not.toHaveBeenCalled();
     });
   });
 

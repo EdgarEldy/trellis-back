@@ -8,6 +8,7 @@ import { join } from 'path';
 import appConfig from './config/app.config';
 import databaseConfig from './config/database.config';
 import jwtConfig from './config/jwt.config';
+import integrationsConfig from './config/integrations.config';
 import { validationSchema } from './config/validation.schema';
 import { DatabaseModule } from './database/database.module';
 import { AuthGuard } from './common/guards/auth.guard';
@@ -23,7 +24,7 @@ import { LikesModule } from './likes/likes.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, jwtConfig],
+      load: [appConfig, databaseConfig, jwtConfig, integrationsConfig],
       validationSchema,
     }),
     ServeStaticModule.forRoot({

@@ -6,6 +6,7 @@ import { AuthService, AuthResult } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { GoogleSigninDto } from './dto/google-signin.dto';
 
 const CREDENTIAL_THROTTLE = { default: { limit: 20, ttl: 60_000 } };
 
@@ -41,5 +42,12 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(@Body() dto: RefreshDto): Promise<void> {
     await this.authService.logout(dto.refreshToken);
+  }
+
+  @Public()
+  @Throttle(CREDENTIAL_THROTTLE)
+  @Post('google')
+  loginWithGoogle(@Body() dto: GoogleSigninDto): Promise<AuthResult> {
+    return this.authService.loginWithGoogle(dto.idToken);
   }
 }

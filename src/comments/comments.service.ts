@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { QueryFailedError, Repository } from 'typeorm';
 import { Comment } from './entities/comment.entity';
 import { Post } from '../posts/entities/post.entity';
@@ -23,6 +24,7 @@ export class CommentsService {
     private readonly commentsRepo: Repository<Comment>,
     @InjectRepository(Post)
     private readonly postsRepo: Repository<Post>,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async findMany(
@@ -60,6 +62,8 @@ export class CommentsService {
       where: { id: comment.id },
       relations: { author: true },
     });
+
+    this.eventEmitter.emit('comment.created', { postId, authorId });
 
     return CommentResponseDto.fromEntity(withAuthor);
   }
