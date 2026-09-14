@@ -12,11 +12,14 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CommentsService, PagedComments } from './comments.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CommentResponseDto } from './dto/comment-response.dto';
 
+@ApiTags('comments')
+@ApiBearerAuth()
 @Controller()
 export class CommentsController {
   constructor(private readonly commentsService: CommentsService) {}
