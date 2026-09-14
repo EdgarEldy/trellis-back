@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository, SelectQueryBuilder } from 'typeorm';
+import { In, QueryFailedError, Repository, SelectQueryBuilder } from 'typeorm';
 import { unlink } from 'fs/promises';
 import { join } from 'path';
 import { Post } from './entities/post.entity';
@@ -13,6 +13,8 @@ import { applyCursorPagination, computeNextCursor } from '../common/pagination/c
 
 const POST_IMAGE_UPLOAD_DIR = join(process.cwd(), 'uploads', 'posts');
 const DEFAULT_PAGE_SIZE = 20;
+const MIN_PAGE_SIZE = 1;
+const MAX_PAGE_SIZE = 100;
 
 export interface PagedPosts {
   items: PostResponseDto[];
@@ -33,19 +35,20 @@ export class PostsService {
     cursor?: string,
     limit: number = DEFAULT_PAGE_SIZE,
   ): Promise<PagedPosts> {
+    const safeLimit = this.clampLimit(limit);
     const qb = this.withCounts(
       this.postsRepo.createQueryBuilder('post').leftJoinAndSelect('post.author', 'author'),
     );
 
-    const cursorRef = cursor ? await this.postsRepo.findOneBy({ id: cursor }) : null;
-    applyCursorPagination(qb, 'post', cursorRef, limit);
+    const cursorRef = cursor ? await this.findCursorRef(cursor) : null;
+    applyCursorPagination(qb, 'post', cursorRef, safeLimit);
 
     const posts = await this.getManyWithCounts(qb);
     const likedPostIds = await this.findLikedPostIds(currentUserId, posts);
 
     return {
       items: posts.map((post) => PostResponseDto.fromEntity(post, likedPostIds.has(post.id))),
-      nextCursor: computeNextCursor(posts, limit),
+      nextCursor: computeNextCursor(posts, safeLimit),
     };
   }
 
@@ -149,6 +152,21 @@ export class PostsService {
       post.likesCount = parseInt(raw[index].post_likesCount as string, 10);
     });
     return entities;
+  }
+
+  private clampLimit(limit: number): number {
+    return Math.min(Math.max(limit, MIN_PAGE_SIZE), MAX_PAGE_SIZE);
+  }
+
+  private async findCursorRef(cursor: string): Promise<Post | null> {
+    try {
+      return await this.postsRepo.findOneBy({ id: cursor });
+    } catch (error) {
+      if (error instanceof QueryFailedError) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   private async getPostOrThrow(id: string): Promise<Post> {
