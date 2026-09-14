@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('health')
@@ -7,6 +8,7 @@ import { Public } from '../common/decorators/public.decorator';
 export class HealthController {
   @Get()
   @Public()
+  @SkipThrottle()
   check(): { status: string } {
     return { status: 'ok' };
   }
