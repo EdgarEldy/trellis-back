@@ -46,4 +46,8 @@ export class Post {
 
   @OneToMany(() => Like, (l) => l.post)
   likes: Like[];
+
+  // Hydrated by loadRelationCountAndMap in PostsService, not a real column.
+  commentsCount?: number;
+  likesCount?: number;
 }

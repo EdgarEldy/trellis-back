@@ -13,6 +13,9 @@ import { AuthGuard } from './common/guards/auth.guard';
 import { HealthController } from './health/health.controller';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { PostsModule } from './posts/posts.module';
+import { CommentsModule } from './comments/comments.module';
+import { LikesModule } from './likes/likes.module';
 
 @Module({
   imports: [
@@ -29,6 +32,9 @@ import { UsersModule } from './users/users.module';
     EventEmitterModule.forRoot(),
     AuthModule,
     UsersModule,
+    PostsModule,
+    CommentsModule,
+    LikesModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],

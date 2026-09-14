@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  OnModuleInit,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -24,11 +25,13 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 const AVATAR_UPLOAD_DIR = join(process.cwd(), 'uploads', 'avatars');
 const AVATAR_MAX_SIZE_BYTES = 5 * 1024 * 1024;
 
-mkdirSync(AVATAR_UPLOAD_DIR, { recursive: true });
-
 @Controller('users')
-export class UsersController {
+export class UsersController implements OnModuleInit {
   constructor(private readonly usersService: UsersService) {}
+
+  onModuleInit(): void {
+    mkdirSync(AVATAR_UPLOAD_DIR, { recursive: true });
+  }
 
   @Public()
   @Get(':id')
