@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   UploadedFile,
@@ -29,7 +30,7 @@ export class UsersController {
 
   @Public()
   @Get(':id')
-  findOne(@Param('id') id: string): Promise<UserResponseDto> {
+  findOne(@Param('id', ParseUUIDPipe) id: string): Promise<UserResponseDto> {
     return this.usersService.findById(id);
   }
 
